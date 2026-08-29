@@ -86,9 +86,8 @@
   .chip.lead{border-color:rgba(224,165,63,.45);color:var(--lead)}
   .chip.turn{border-color:rgba(75,141,255,.4);color:var(--accent)}
   .chip.sel{background:var(--bg3);color:var(--fg)}
-  .who-strip{border-top:1px solid var(--line);padding:8px 16px;display:flex;align-items:center;
+  .who-strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
     gap:7px;font-size:11px;background:var(--bg2);flex-wrap:wrap}
-  .who-strip .rname{font-weight:600;font-size:12.5px;color:var(--fg);margin-right:4px}
   .pers{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
     padding:1px 9px 1px 3px;color:var(--dim);cursor:pointer}
   .pers:hover{color:var(--fg)}
@@ -134,6 +133,11 @@
   .send:disabled{opacity:.4;cursor:default}
 
   .insp{background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .app.closed{grid-template-columns:272px 1fr}
+  .app.closed .insp{display:none}
+  .chip.on{background:var(--bg3);color:var(--fg);border-color:var(--dim2)}
+  .pol{color:var(--dim);border-bottom:1px dotted var(--dim2);cursor:pointer}
+  .pol:hover{color:var(--fg)}
   .icard{padding:0 14px 14px;overflow-y:auto}
   .ihead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .ihead .av{width:34px;height:34px}
@@ -180,7 +184,7 @@
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app closed" id="app">
   <aside class="side">
     <div class="brand"><span class="logo">F</span><b>foundry-lab</b></div>
     <div class="hd">Projects <u title="New project" onclick="toast('New project — not in this prototype')">+</u></div>
@@ -195,8 +199,8 @@
 
   <section class="main">
     <header class="top" id="top"></header>
-    <div class="thread" id="thread"></div>
     <div class="who-strip" id="strip"></div>
+    <div class="thread" id="thread"></div>
     <div class="composer">
       <div class="cbox" id="cbox">
         <div class="to" id="cto"></div>
@@ -278,7 +282,8 @@ const DB = { projects:[
 
 const UI = { pid:'p1', sid:DB.projects[0].sessions[0].id, rid:DB.projects[0].sessions[0].rooms[0].id,
              open:{p1:true}, sopen:{}, inspect:null };
-UI.inspect = {type:'member', id:DB.projects[0].sessions[0].members[1].id};
+UI.inspect = {type:'room', id:DB.projects[0].sessions[0].rooms[0].id};
+UI.panel = false;
 
 /* ---------------------------------------------------------------- lookups */
 const proj = () => DB.projects.find(p=>p.id===UI.pid);
@@ -298,7 +303,8 @@ const POLICY_HINT = {
 };
 
 /* ---------------------------------------------------------------- render */
-function render(){ renderTree(); renderMain(); renderInsp(); }
+function render(){ document.getElementById('app').classList.toggle('closed',!UI.panel);
+  renderTree(); renderMain(); if(UI.panel) renderInsp(); }
 
 function renderTree(){
   const el = document.getElementById('tree'); el.innerHTML='';
@@ -362,11 +368,14 @@ function renderMain(){
   const title = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
 
   document.getElementById('top').innerHTML =
-    `<div><div class="crumb">${proj().name}</div>
-       <h1>${s.name}</h1></div>
+    `<div><div class="crumb">${proj().name} &nbsp;›&nbsp; ${s.name}</div><h1>${title}</h1></div>
      <div class="grow"></div>
-     <button class="chip" id="morebtn">⋯</button>`;
+     <button class="chip ${UI.panel?'on':''}" id="mgbtn"
+       title="Open the room panel — seats, members, turn-taking">Manage room…</button>
+     <button class="chip" id="morebtn" title="Rename, fork, archive, export">⋯</button>`;
   document.getElementById('morebtn').onclick=()=>toast('Rename / fork / archive / export — not in this prototype');
+  document.getElementById('mgbtn').onclick=()=>{
+    UI.panel=!UI.panel; if(UI.panel) UI.inspect={type:'room',id:r.id}; render(); };
 
   const th=document.getElementById('thread');
   if(!r.msgs.length){
@@ -387,35 +396,29 @@ function renderMain(){
   }
   th.scrollTop = th.scrollHeight;
 
-  /* the bar that sits right above the cursor */
   const strip=document.getElementById('strip'); strip.innerHTML='';
-  const nm=document.createElement('span'); nm.className='rname'; nm.textContent=title;
-  strip.appendChild(nm);
   roomMembers(r).forEach(m=>{
     const b=document.createElement('span');
     b.className='pers'+(m.id===r.lead?' is-lead':'')+(m.status==='missing'?' gone':'');
-    b.title = m.kind==='human' ? 'you — in every room'
-            : (m.status==='missing' ? 'seat empty — click to assign a member'
-                                    : m.provider+' · '+m.model);
+    b.title = (m.kind==='human' ? 'you — a member of every room'
+              : m.status==='missing' ? 'empty seat — click to assign a member'
+              : m.provider+' · '+m.model+' · '+m.settings
+                + ' — ' + m.ctx.used + 'k context, ' + m.msgs + ' messages')
+            + (m.id===r.lead ? '\n★ lead of this room' : '')
+            + (m.paused ? '\npaused — will not answer' : '');
     b.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>${m.name}`
       + (m.id===r.lead?' <span class="star">★</span>':'')
-      + (m.status==='missing'?' <span style="color:var(--red)">· empty seat</span>':'')
-      + (m.paused?' · paused':'');
-    b.onclick=()=>{UI.inspect={type:'member',id:m.id}; render();};
+      + (m.status==='missing'?' <span style="color:var(--red)">· empty</span>':'')
+      + (m.paused?' <span style="color:var(--dim2)">· paused</span>':'');
+    b.onclick=()=>{UI.panel=true; UI.inspect={type:'member',id:m.id}; render();};
     strip.appendChild(b);
   });
-  const sp=document.createElement('div'); sp.className='grow'; strip.appendChild(sp);
-  const lb=document.createElement('button'); lb.className='chip lead';
-  lb.textContent='★ '+(lead?lead.name:'—'); lb.title='Lead of this room'; lb.onclick=pickLead;
-  const tb=document.createElement('button'); tb.className='chip turn';
-  tb.textContent=POLICY[r.policy]; tb.title='Turn-taking'; tb.onclick=pickPolicy;
-  const mg=document.createElement('button'); mg.className='chip'; mg.textContent='Manage room…';
-  mg.onclick=manageRoom;
-  strip.append(lb,tb,mg);
 
   const live=agentsIn(r).length, tot=roomMembers(r).filter(m=>m.kind==='agent').length;
   document.getElementById('cto').innerHTML =
-    `Writing to <b>${title}</b> · ${live} of ${tot} agents live`;
+    `<span class="pol" id="polbtn" title="${POLICY_HINT[r.policy]}">${POLICY[r.policy]}</span>`
+    + ` · ${live} of ${tot} agents live`;
+  document.getElementById('polbtn').onclick=pickPolicy;
   document.getElementById('pausebtn').textContent = r.paused? 'Resume room':'Pause room';
   document.getElementById('pausebtn').onclick=()=>{r.paused=!r.paused;
     toast(r.paused?'Room paused — agents will not answer':'Room resumed'); render();};
@@ -432,7 +435,8 @@ function inspMember(el,m){
   const pct=Math.round(m.ctx.used/m.ctx.max*100);
   const r=room(), isLead=r.lead===m.id, inRoom=r.members.includes(m.id);
   el.innerHTML=`
-   <div class="hd">Member <button class="chip" id="toroom">Room settings</button></div>
+   <div class="hd">Member <span><button class="chip" id="toroom">Room</button>
+     <button class="chip" id="closep" title="Close panel">✕</button></span></div>
    <div class="icard">
     <div class="ihead"><div class="av" style="background:${m.color}">${m.initial}</div>
       <div><div class="nm">${m.name}</div>
@@ -469,6 +473,7 @@ function inspMember(el,m){
      they are not one member's to delete. <code>replace</code> keeps the seat and its rooms;
      only the binding changes.</div>`;
   el.querySelector('#toroom').onclick=()=>{UI.inspect={type:'room',id:room().id}; render();};
+  el.querySelector('#closep').onclick=()=>{UI.panel=false; render();};
   const q=id=>el.querySelector(id);
   q('#mklead') && (q('#mklead').onclick=()=>{ const r=room(); r.lead=m.id;
     r.msgs.push({sys:1,b:`<em>★ ${m.name}</em> is now lead of this room.`});
@@ -486,7 +491,7 @@ function inspMember(el,m){
 function inspRoom(el){
   const r=room(), s=sess();
   el.innerHTML=`
-   <div class="hd">Room</div>
+   <div class="hd">Room <button class="chip" id="closep" title="Close panel">✕</button></div>
    <div class="icard">
     <div class="fld"><label>Name</label><div class="val">${r.kind==='direct'?'↳ ':'# '}${r.name}
       <span>${r.kind}</span></div></div>
@@ -509,6 +514,7 @@ function inspRoom(el){
    </div>
    <div class="note">A room is a subset of the session's members. You are in every room.
      Members outside a room never learn it exists.</div>`;
+  el.querySelector('#closep').onclick=()=>{UI.panel=false; render();};
   el.querySelector('#pol').onchange=e=>{ r.policy=e.target.value;
     r.msgs.push({sys:1,b:`turn-taking set to <em>${POLICY[r.policy]}</em> — ${POLICY_HINT[r.policy]}`});
     render(); };
@@ -566,7 +572,7 @@ function newRoom(){
       toast('# '+r.name+' created'); render(); }});
 }
 
-function manageRoom(){ UI.inspect={type:'room',id:room().id}; render(); }
+function manageRoom(){ UI.panel=true; UI.inspect={type:'room',id:room().id}; render(); }
 
 function replaceMember(m){
   const CAT=[{p:'claude-cli',mo:'opus'},{p:'claude-cli',mo:'sonnet'},{p:'codex-cli',mo:'gpt-5-codex'},
