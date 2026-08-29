@@ -46,14 +46,36 @@ Caveats:
     turn 2 (1.6s) -> "PELICAN"
     one process, context intact, nothing resent
 
-|                        | mcp-server            | app-server              |
-|------------------------|-----------------------|-------------------------|
-| contract               | standard MCP          | own protocol, experimental |
-| answer                 | one call, final text  | deltas + turn/completed |
-| "is typing"            | no                    | yes                     |
-| recovery after a death | no resume tool        | thread/resume           |
-| approvals              | `approval-policy` arg | events you must handle  |
-| system prompt          | `base-instructions`   | via config              |
+|                          | mcp-server            | app-server                 |
+|--------------------------|-----------------------|----------------------------|
+| context across turns     | yes                   | yes                        |
+| progress during a turn   | yes (`codex/event`)   | yes                        |
+| token-by-token text      | **no**                | yes (deltas)               |
+| recovery after a restart | **no**                | yes (`thread/resume`)      |
+| contract                 | stable                | experimental               |
+| approvals                | `approval-policy` arg | events you must handle     |
+| system prompt            | `base-instructions`   | via config                 |
+
+An earlier version of this table said mcp-server does not stream. That was
+wrong. Measured with tools/probe_codex_mcp_events.py, one turn emits:
+
+    0.7s  session_configured / task_started
+    0.7s  mcp_startup_update    node_repl, codex_apps: starting
+    1.8s  mcp_startup_complete  ready: [node_repl, codex_apps]
+    2.3s  raw_response_item x5
+          item_started x2, item_completed x2
+          agent_message x1, token_count x1, task_complete
+
+Enough for a live "working…" state, tool-call visibility and a cost meter.
+What is missing is per-token deltas: `agent_message` arrives once, at the
+end, so the text cannot be rendered as it is written — and a long turn cannot
+be read from the start while it finishes.
+
+Streaming and context are independent axes. Streaming is how the answer
+arrives; context is what the model remembers. Do not conflate them.
+
+Also measured: 1.8s of every new conversation goes to codex booting its own
+MCP servers (node_repl, codex_apps). That is per-conversation overhead.
 
 ### Restart recovery — measured (the deciding fact)
 
