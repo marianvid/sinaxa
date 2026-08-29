@@ -15,16 +15,24 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);
     font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;overflow:hidden}
-  .app{display:grid;grid-template-columns:56px 268px 1fr 258px;height:100vh}
+  .app{display:grid;grid-template-columns:272px 1fr 258px;height:100vh}
   .grow{flex:1}
 
-  .rail{background:#0f1116;border-right:1px solid var(--line);display:flex;flex-direction:column;
-    align-items:center;padding:10px 0;gap:6px}
-  .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(150deg,var(--accent),var(--seat));
-    display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;margin-bottom:8px}
-  .rbtn{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--dim2);cursor:pointer}
-  .rbtn:hover{background:var(--bg3);color:var(--fg)}
-  .rbtn.on{background:var(--bg3);color:var(--accent)}
+  .nav{border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);
+    padding:6px 6px;gap:2px;background:#171a21}
+  .nb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:7px;
+    color:var(--dim2);cursor:pointer;font-size:10px;letter-spacing:.02em}
+  .nb i{font-style:normal;font-size:15px;line-height:1}
+  .nb:hover{background:var(--bg3);color:var(--fg)}
+  .nb.on{background:var(--bg3);color:var(--accent)}
+  .brand{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
+  .brand .logo{width:22px;height:22px;border-radius:6px;
+    background:linear-gradient(150deg,var(--accent),var(--seat));display:grid;place-items:center;
+    font-weight:700;font-size:11px;color:#fff}
+  .brand b{font-size:12.5px;letter-spacing:.01em}
+  .toggle{border:1px solid var(--line);border-radius:6px;color:var(--dim2);font-size:10px;
+    padding:0 6px;line-height:16px;cursor:pointer;display:flex;gap:4px;align-items:center}
+  .toggle:hover{color:var(--fg);border-color:var(--dim2)}
 
   .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
   .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
@@ -78,8 +86,9 @@
   .chip.lead{border-color:rgba(224,165,63,.45);color:var(--lead)}
   .chip.turn{border-color:rgba(75,141,255,.4);color:var(--accent)}
   .chip.sel{background:var(--bg3);color:var(--fg)}
-  .who-strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
+  .who-strip{border-top:1px solid var(--line);padding:8px 16px;display:flex;align-items:center;
     gap:7px;font-size:11px;background:var(--bg2);flex-wrap:wrap}
+  .who-strip .rname{font-weight:600;font-size:12.5px;color:var(--fg);margin-right:4px}
   .pers{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
     padding:1px 9px 1px 3px;color:var(--dim);cursor:pointer}
   .pers:hover{color:var(--fg)}
@@ -172,24 +181,22 @@
 </head>
 <body>
 <div class="app">
-  <nav class="rail">
-    <div class="logo">F</div>
-    <div class="rbtn on" title="Projects">▤</div>
-    <div class="rbtn" title="Members catalog" onclick="toast('Members catalog — not in this prototype')">◉</div>
-    <div class="rbtn" title="Runs / daemon" onclick="toast('Daemon view — not in this prototype')">⚡</div>
-    <div class="grow"></div>
-    <div class="rbtn" title="Settings" onclick="toast('Settings — not in this prototype')">⚙</div>
-  </nav>
-
   <aside class="side">
+    <div class="brand"><span class="logo">F</span><b>foundry-lab</b></div>
     <div class="hd">Projects <u title="New project" onclick="toast('New project — not in this prototype')">+</u></div>
     <div class="scroll" id="tree"></div>
+    <nav class="nav">
+      <div class="nb on"><i>▤</i>Projects</div>
+      <div class="nb" onclick="toast('Members catalog — the reusable agent definitions')"><i>◉</i>Members</div>
+      <div class="nb" onclick="toast('Runs — which CLI processes are up')"><i>⚡</i>Runs</div>
+      <div class="nb" onclick="toast('Settings — not in this prototype')"><i>⚙</i>Settings</div>
+    </nav>
   </aside>
 
   <section class="main">
     <header class="top" id="top"></header>
-    <div class="who-strip" id="strip"></div>
     <div class="thread" id="thread"></div>
+    <div class="who-strip" id="strip"></div>
     <div class="composer">
       <div class="cbox" id="cbox">
         <div class="to" id="cto"></div>
@@ -271,7 +278,6 @@ const DB = { projects:[
 
 const UI = { pid:'p1', sid:DB.projects[0].sessions[0].id, rid:DB.projects[0].sessions[0].rooms[0].id,
              open:{p1:true}, sopen:{}, inspect:null };
-UI.sopen[UI.sid] = true;
 UI.inspect = {type:'member', id:DB.projects[0].sessions[0].members[1].id};
 
 /* ---------------------------------------------------------------- lookups */
@@ -305,17 +311,17 @@ function renderTree(){
     if(open){
       const box=document.createElement('div'); box.className='sessions';
       p.sessions.forEach(s=>{
-        const so = !!UI.sopen[s.id], act = s.id===UI.sid;
+        const so=!!UI.sopen[s.id], act=(s.id===UI.sid), extra=s.rooms.length-1;
         const sd=document.createElement('div'); sd.className='sess';
-        sd.innerHTML=`<div class="node ${act?'act':''}"><span class="caret ${so?'o':''}">▶</span>
-          <span class="t">${s.name}</span><span class="when">${s.when}</span></div>`;
-        sd.querySelector('.node').onclick=()=>{
-          UI.sopen[s.id]=!so;
-          if(!act && UI.sopen[s.id]){ UI.pid=p.id; UI.sid=s.id; UI.rid=s.rooms[0].id;
-            UI.inspect={type:'room',id:s.rooms[0].id}; }
-          render();
-        };
-        if(so) sd.appendChild(sessionBody(p,s));
+        sd.innerHTML=`<div class="node ${act?'act':''}">
+          <span class="t">${s.name}</span>
+          ${extra>0?`<span class="toggle" title="${so?'hide':'show'} rooms">${so?'−':'+'} ${extra}</span>`
+                   :`<span class="when">${s.when}</span>`}</div>`;
+        sd.querySelector('.t').onclick=e=>{e.stopPropagation(); openSession(p,s);};
+        const tg=sd.querySelector('.toggle');
+        if(tg) tg.onclick=e=>{e.stopPropagation(); UI.sopen[s.id]=!so; render();};
+        else sd.querySelector('.node').onclick=()=>openSession(p,s);
+        if(so) sd.appendChild(roomList(p,s));
         box.appendChild(sd);
       });
       d.appendChild(box);
@@ -324,72 +330,43 @@ function renderTree(){
   });
 }
 
-function sessionBody(p,s){
-  const box=document.createElement('div'); box.className='sub';
-  const g1=document.createElement('div'); g1.className='grp';
-  g1.innerHTML='Rooms <u title="New room">+</u>';
-  g1.querySelector('u').onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id; newRoom();};
-  box.appendChild(g1);
+function openSession(p,s){
+  UI.pid=p.id; UI.sid=s.id;
+  if(!s.rooms.find(r=>r.id===UI.rid)) UI.rid=s.rooms[0].id;
+  UI.inspect={type:'room',id:UI.rid};
+  render();
+}
 
+function roomList(p,s){
+  const box=document.createElement('div'); box.className='sub';
   s.rooms.forEach(r=>{
-    const on = (s.id===UI.sid && r.id===UI.rid);
-    const label = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
+    const on=(s.id===UI.sid && r.id===UI.rid);
+    const label=r.kind==='direct'?'↳ '+r.name:'# '+r.name;
     const el=document.createElement('div'); el.className='room'+(on?' on':'');
     el.innerHTML=`<span class="t">${label}</span>
       ${r.kind==='group'?'<span class="lockicn">🔒</span>':''}
-      <span class="avs">${roomMembers(r).map(m=>`<i style="background:${m.color}"></i>`).join('')}</span>`;
+      <span class="avs">${r.members.map(id=>s.members.find(m=>m.id===id))
+        .filter(Boolean).map(m=>`<i style="background:${m.color}"></i>`).join('')}</span>`;
     el.onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id; UI.rid=r.id;
       UI.inspect={type:'room',id:r.id}; render();};
     box.appendChild(el);
   });
-
-  const g2=document.createElement('div'); g2.className='grp';
-  g2.innerHTML='Members <u title="Add member">+</u>';
-  g2.querySelector('u').onclick=e=>{e.stopPropagation(); toast('Add member — pick from the catalog (not in this prototype)');};
-  box.appendChild(g2);
-
-  s.rooms.length && s.members.forEach(m=>{
-    const on = UI.inspect && UI.inspect.type==='member' && UI.inspect.id===m.id && s.id===UI.sid;
-    const isLead = (s.id===UI.sid) && room() && room().lead===m.id;
-    const el=document.createElement('div');
-    el.className='mem'+(on?' on':'')+(m.status==='missing'?' miss':'');
-    el.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>
-      <span class="t">${m.name} <span class="rl">${m.kind==='human'?'you':'· '+m.role}</span></span>
-      ${isLead?'<span class="star" title="Lead of the open room">★</span>':''}
-      ${m.kind==='agent'?`<span class="dot ${m.status==='up'?'up':'down'}"></span>`:''}`;
-    el.onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id;
-      UI.inspect={type:'member',id:m.id}; render();};
-    box.appendChild(el);
-  });
+  const a=document.createElement('div'); a.className='add'; a.textContent='+ New room';
+  a.onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id; newRoom();};
+  box.appendChild(a);
   return box;
 }
 
 function renderMain(){
   const s=sess(), r=room(), lead=mem(r.lead);
   const title = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
-  document.getElementById('top').innerHTML =
-    `<div><div class="crumb">${proj().name} &nbsp;›&nbsp; ${s.name}</div><h1>${title}</h1></div>
-     <div class="grow"></div>
-     <button class="chip lead" id="leadbtn">★ Lead: ${lead?lead.name:'—'} ▾</button>
-     <button class="chip turn" id="turnbtn">Turn-taking: ${POLICY[r.policy]} ▾</button>
-     <button class="chip" id="morebtn">⋯</button>`;
-  document.getElementById('leadbtn').onclick=pickLead;
-  document.getElementById('turnbtn').onclick=pickPolicy;
-  document.getElementById('morebtn').onclick=()=>toast('Rename / archive / export — not in this prototype');
 
-  const strip=document.getElementById('strip'); strip.innerHTML='';
-  roomMembers(r).forEach(m=>{
-    const b=document.createElement('span');
-    b.className='pers'+(m.id===r.lead?' is-lead':'')+(m.status==='missing'?' gone':'');
-    b.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>${m.name}`
-      + (m.id===r.lead?' <span class="star">★</span>':'')
-      + (m.status==='missing'?' — seat empty':'') + (m.paused?' — paused':'');
-    b.onclick=()=>{UI.inspect={type:'member',id:m.id}; render();};
-    strip.appendChild(b);
-  });
-  const sp=document.createElement('div'); sp.className='grow'; strip.appendChild(sp);
-  const mg=document.createElement('button'); mg.className='chip'; mg.textContent='Manage room…';
-  mg.onclick=manageRoom; strip.appendChild(mg);
+  document.getElementById('top').innerHTML =
+    `<div><div class="crumb">${proj().name}</div>
+       <h1>${s.name}</h1></div>
+     <div class="grow"></div>
+     <button class="chip" id="morebtn">⋯</button>`;
+  document.getElementById('morebtn').onclick=()=>toast('Rename / fork / archive / export — not in this prototype');
 
   const th=document.getElementById('thread');
   if(!r.msgs.length){
@@ -410,9 +387,35 @@ function renderMain(){
   }
   th.scrollTop = th.scrollHeight;
 
-  const live = agentsIn(r).length, tot = roomMembers(r).filter(m=>m.kind==='agent').length;
+  /* the bar that sits right above the cursor */
+  const strip=document.getElementById('strip'); strip.innerHTML='';
+  const nm=document.createElement('span'); nm.className='rname'; nm.textContent=title;
+  strip.appendChild(nm);
+  roomMembers(r).forEach(m=>{
+    const b=document.createElement('span');
+    b.className='pers'+(m.id===r.lead?' is-lead':'')+(m.status==='missing'?' gone':'');
+    b.title = m.kind==='human' ? 'you — in every room'
+            : (m.status==='missing' ? 'seat empty — click to assign a member'
+                                    : m.provider+' · '+m.model);
+    b.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>${m.name}`
+      + (m.id===r.lead?' <span class="star">★</span>':'')
+      + (m.status==='missing'?' <span style="color:var(--red)">· empty seat</span>':'')
+      + (m.paused?' · paused':'');
+    b.onclick=()=>{UI.inspect={type:'member',id:m.id}; render();};
+    strip.appendChild(b);
+  });
+  const sp=document.createElement('div'); sp.className='grow'; strip.appendChild(sp);
+  const lb=document.createElement('button'); lb.className='chip lead';
+  lb.textContent='★ '+(lead?lead.name:'—'); lb.title='Lead of this room'; lb.onclick=pickLead;
+  const tb=document.createElement('button'); tb.className='chip turn';
+  tb.textContent=POLICY[r.policy]; tb.title='Turn-taking'; tb.onclick=pickPolicy;
+  const mg=document.createElement('button'); mg.className='chip'; mg.textContent='Manage room…';
+  mg.onclick=manageRoom;
+  strip.append(lb,tb,mg);
+
+  const live=agentsIn(r).length, tot=roomMembers(r).filter(m=>m.kind==='agent').length;
   document.getElementById('cto').innerHTML =
-    `Writing to <b>${title}</b> · ${live} of ${tot} agents live · ${POLICY[r.policy]}`;
+    `Writing to <b>${title}</b> · ${live} of ${tot} agents live`;
   document.getElementById('pausebtn').textContent = r.paused? 'Resume room':'Pause room';
   document.getElementById('pausebtn').onclick=()=>{r.paused=!r.paused;
     toast(r.paused?'Room paused — agents will not answer':'Room resumed'); render();};
