@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>foundry-lab — mockup v1</title>
+<style>
+  :root{
+    --bg:#14161c; --bg2:#1a1d25; --bg3:#20242e; --line:#2c313d;
+    --fg:#e6e9ef; --dim:#8b93a5; --dim2:#646c7e;
+    --accent:#4b8dff; --green:#3fbf7f; --amber:#e0a53f; --red:#e05f5f;
+    --seat:#7c6cf0;
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    overflow:hidden}
+  .app{display:grid;grid-template-columns:56px 240px 1fr 260px;height:100vh}
+
+  /* ---------- rail ---------- */
+  .rail{background:#0f1116;border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px}
+  .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(150deg,var(--accent),var(--seat));
+    display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;margin-bottom:8px}
+  .rbtn{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--dim2);cursor:pointer}
+  .rbtn:hover{background:var(--bg3);color:var(--fg)}
+  .rbtn.on{background:var(--bg3);color:var(--accent)}
+  .rail .spacer{flex:1}
+
+  /* ---------- sidebar ---------- */
+  .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .side h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+    margin:0;padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+  .side h2 span{cursor:pointer;font-size:15px;line-height:1}
+  .side h2 span:hover{color:var(--fg)}
+  .scroll{overflow-y:auto;flex:1;padding-bottom:12px}
+  .proj{margin:0 6px}
+  .proj > .row{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .proj > .row:hover{background:var(--bg3)}
+  .proj.open > .row{color:var(--fg)}
+  .caret{width:10px;color:var(--dim2);transition:transform .12s;flex:none;font-size:9px}
+  .proj.open .caret{transform:rotate(90deg)}
+  .pname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+  .count{font-size:11px;color:var(--dim2)}
+  .sessions{display:none;margin:2px 0 6px 18px;border-left:1px solid var(--line);padding-left:8px}
+  .proj.open .sessions{display:block}
+  .sess{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .sess:hover{background:var(--bg3);color:var(--fg)}
+  .sess.active{background:rgba(75,141,255,.14);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent)}
+  .sess .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sess .when{font-size:10px;color:var(--dim2)}
+  .avatars{display:flex}
+  .avatars i{width:14px;height:14px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg2);
+    display:inline-block;font-style:normal}
+  .sess.active .avatars i{border-color:#1c2431}
+
+  /* ---------- main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+  .top{border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:12px}
+  .top .crumb{font-size:11px;color:var(--dim2)}
+  .top h1{font-size:14px;margin:0;font-weight:600}
+  .top .grow{flex:1}
+  .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer}
+  .chip:hover{color:var(--fg);border-color:var(--dim2)}
+
+  .tabs{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+  .tab{padding:9px 12px;font-size:12px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;
+    display:flex;align-items:center;gap:7px;white-space:nowrap}
+  .tab:hover{color:var(--fg)}
+  .tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+  .tab .sq{width:8px;height:8px;border-radius:3px;flex:none}
+  .tab .badge{background:var(--accent);color:#fff;border-radius:999px;font-size:10px;padding:0 5px;line-height:15px}
+
+  .thread{flex:1;overflow-y:auto;padding:18px 22px}
+  .day{text-align:center;font-size:11px;color:var(--dim2);margin:8px 0 18px;position:relative}
+  .day::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+  .day b{background:var(--bg);padding:0 10px;position:relative;font-weight:400}
+
+  .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:16px}
+  .av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
+  .who{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+  .who b{font-size:13px}
+  .who .model{font-size:10px;color:var(--dim2);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  .who .time{font-size:10px;color:var(--dim2)}
+  .body{color:#cfd5e0}
+  .body p{margin:0 0 7px}
+  .body code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .mention{color:var(--accent);background:rgba(75,141,255,.12);border-radius:4px;padding:0 3px}
+  .typing{color:var(--dim2);font-style:italic}
+
+  .composer{border-top:1px solid var(--line);padding:12px 16px}
+  .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px}
+  .cbox .to{font-size:11px;color:var(--dim2);margin-bottom:6px}
+  .cbox .to b{color:var(--dim)}
+  .cbox textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;outline:none;height:38px}
+  .ctools{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .ctools .grow{flex:1}
+  .send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;font:inherit;cursor:pointer}
+
+  /* ---------- roster ---------- */
+  .roster{background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .roster .scroll{padding:0 8px}
+  .seat{border:1px solid transparent;border-radius:var(--radius);padding:8px;margin-bottom:4px;cursor:pointer}
+  .seat:hover{background:var(--bg3)}
+  .seat.active{background:var(--bg3);border-color:var(--line)}
+  .seat .l1{display:flex;align-items:center;gap:8px}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .dot.up{background:var(--green)} .dot.warn{background:var(--amber)} .dot.down{background:var(--red)}
+  .seat .role{font-size:11px;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em;flex:1}
+  .seat .l2{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .seat .nm{font-weight:600;font-size:12.5px}
+  .seat .meta{font-size:11px;color:var(--dim2);margin-top:2px;margin-left:40px}
+  .seat.miss{border-color:rgba(224,95,95,.4);background:rgba(224,95,95,.06)}
+  .seat.miss .nm{color:var(--dim2);text-decoration:line-through}
+  .fix{margin-top:8px;margin-left:40px;display:flex;gap:6px;align-items:center}
+  .btn{font:inherit;font-size:11px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);
+    border-radius:6px;padding:3px 9px;cursor:pointer}
+  .btn:hover{border-color:var(--dim2)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .warnline{font-size:11px;color:var(--amber);margin:0 8px 8px;padding:7px 9px;
+    background:rgba(224,165,63,.08);border:1px solid rgba(224,165,63,.25);border-radius:6px}
+  .addseat{margin:6px 8px 14px;text-align:center;color:var(--dim2);border:1px dashed var(--line);
+    border-radius:var(--radius);padding:7px;cursor:pointer;font-size:12px}
+  .addseat:hover{color:var(--fg);border-color:var(--dim2)}
+  .note{font-size:11px;color:var(--dim2);padding:10px 14px;border-top:1px solid var(--line);line-height:1.6}
+  .note code{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- rail -->
+  <nav class="rail">
+    <div class="logo">F</div>
+    <div class="rbtn on" title="Projects">▤</div>
+    <div class="rbtn" title="Members catalog">◉</div>
+    <div class="rbtn" title="Runs / daemon">⚡</div>
+    <div class="spacer"></div>
+    <div class="rbtn" title="Settings">⚙</div>
+  </nav>
+
+  <!-- projects + sessions -->
+  <aside class="side">
+    <h2>Projects <span title="New project">+</span></h2>
+    <div class="scroll">
+
+      <div class="proj open">
+        <div class="row"><span class="caret">▶</span><span class="pname">foundry-lab</span><span class="count">4</span></div>
+        <div class="sessions">
+          <div class="sess active">
+            <div class="t">seat model &amp; store</div>
+            <div class="avatars"><i style="background:#c96442"></i><i style="background:#3fbf7f"></i><i style="background:#7c6cf0"></i></div>
+            <div class="when">now</div>
+          </div>
+          <div class="sess">
+            <div class="t">UI mockup review</div>
+            <div class="avatars"><i style="background:#c96442"></i><i style="background:#3fbf7f"></i></div>
+            <div class="when">2h</div>
+          </div>
+          <div class="sess">
+            <div class="t">provider adapters</div>
+            <div class="avatars"><i style="background:#3fbf7f"></i><i style="background:#4b8dff"></i></div>
+            <div class="when">Tue</div>
+          </div>
+          <div class="sess">
+            <div class="t">kickoff / naming</div>
+            <div class="avatars"><i style="background:#c96442"></i></div>
+            <div class="when">Mon</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="proj">
+        <div class="row"><span class="caret">▶</span><span class="pname">agent-bridge</span><span class="count">11</span></div>
+        <div class="sessions">
+          <div class="sess"><div class="t">contract v1 rev 4</div><div class="when">Aug 24</div></div>
+          <div class="sess"><div class="t">worker caps</div><div class="when">Aug 22</div></div>
+        </div>
+      </div>
+
+      <div class="proj">
+        <div class="row"><span class="caret">▶</span><span class="pname">ai-lab</span><span class="count">7</span></div>
+        <div class="sessions">
+          <div class="sess"><div class="t">rtx benchmark</div><div class="when">Aug 19</div></div>
+        </div>
+      </div>
+
+      <div class="proj">
+        <div class="row"><span class="caret">▶</span><span class="pname">data-lab</span><span class="count">2</span></div>
+        <div class="sessions">
+          <div class="sess"><div class="t">audio pipeline</div><div class="when">Jul 30</div></div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- main -->
+  <section class="main">
+    <header class="top">
+      <div>
+        <div class="crumb">foundry-lab</div>
+        <h1>seat model &amp; store</h1>
+      </div>
+      <div class="grow"></div>
+      <div class="chip">Fork session</div>
+      <div class="chip">Export</div>
+      <div class="chip">⋯</div>
+    </header>
+
+    <div class="tabs">
+      <div class="tab active"><span class="sq" style="background:var(--accent)"></span>Team room</div>
+      <div class="tab"><span class="sq" style="background:#c96442"></span>Claude · architect</div>
+      <div class="tab"><span class="sq" style="background:#3fbf7f"></span>Codex · backend <span class="badge">2</span></div>
+      <div class="tab"><span class="sq" style="background:#7c6cf0"></span>Reviewer</div>
+      <div class="tab" style="color:var(--dim2)">Notes</div>
+    </div>
+
+    <div class="thread">
+      <div class="day"><b>Today</b></div>
+
+      <div class="msg">
+        <div class="av" style="background:#2f6fd0">M</div>
+        <div>
+          <div class="who"><b>Marian</b><span class="model">admin · cto</span><span class="time">09:12</span></div>
+          <div class="body"><p><span class="mention">@all</span> the seat's thread is the source of truth, not the provider session. Codex, what does that cost us on the store side?</p></div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="av" style="background:#3fbf7f">C</div>
+        <div>
+          <div class="who"><b>Codex</b><span class="model">gpt-5-codex · backend</span><span class="time">09:12</span></div>
+          <div class="body">
+            <p>One table, <code>message(seat_id, seq, role, body, ts)</code>, plus a <code>seat</code> row carrying the binding and an opaque <code>provider_cursor</code>. Replay is a range scan on <code>(seat_id, seq)</code>.</p>
+            <p>Cost is the re-prime on rebind: the new member pays cache-creation once. Everything after that is the normal resumed price.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="av" style="background:#c96442">A</div>
+        <div>
+          <div class="who"><b>Claude</b><span class="model">opus · architect</span><span class="time">09:14</span></div>
+          <div class="body">
+            <p>Agreed. Add <code>seat.summary</code> so a rebind can hand over a compacted history instead of 40k tokens of raw thread. <span class="mention">@Codex</span> keep it nullable — we fill it lazily.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="av" style="background:#7c6cf0">?</div>
+        <div>
+          <div class="who"><b>Reviewer</b><span class="model">seat empty</span><span class="time">—</span></div>
+          <div class="body typing">seat has 18 messages of history, waiting for a member →</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="cbox">
+        <div class="to">Writing to <b>Team room</b> · 2 of 3 seats live</div>
+        <textarea placeholder="Message the team…  @name to address one seat">@Codex draft the schema, @Claude review it before I look.</textarea>
+        <div class="ctools">
+          <span class="chip">📎</span><span class="chip">⌘ Round-robin</span><span class="chip">Pause all</span>
+          <div class="grow"></div>
+          <button class="send">Send</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- roster -->
+  <aside class="roster">
+    <h2 style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin:0;padding:14px 14px 8px;display:flex;justify-content:space-between">
+      Seats <span class="count">3</span>
+    </h2>
+
+    <div class="warnline">1 seat could not be restored — its member is no longer configured.</div>
+
+    <div class="scroll">
+      <div class="seat active">
+        <div class="l1"><span class="dot up"></span><span class="role">architect</span></div>
+        <div class="l2"><div class="av" style="background:#c96442;width:30px;height:30px">A</div>
+          <div><div class="nm">Claude</div><div style="font-size:11px;color:var(--dim2)">opus · temp 0.3</div></div></div>
+        <div class="meta">142 msgs · ctx 38k</div>
+      </div>
+
+      <div class="seat">
+        <div class="l1"><span class="dot up"></span><span class="role">backend</span></div>
+        <div class="l2"><div class="av" style="background:#3fbf7f;width:30px;height:30px">C</div>
+          <div><div class="nm">Codex</div><div style="font-size:11px;color:var(--dim2)">gpt-5-codex · high</div></div></div>
+        <div class="meta">96 msgs · ctx 21k</div>
+      </div>
+
+      <div class="seat miss">
+        <div class="l1"><span class="dot down"></span><span class="role">reviewer</span></div>
+        <div class="l2"><div class="av" style="background:#3b404d;width:30px;height:30px">?</div>
+          <div><div class="nm">opencode · qwen</div><div style="font-size:11px;color:var(--red)">provider not configured</div></div></div>
+        <div class="meta">18 msgs kept</div>
+        <div class="fix">
+          <button class="btn primary">Assign member…</button>
+          <button class="btn">Skip</button>
+        </div>
+      </div>
+
+      <div class="addseat">+ Add seat</div>
+    </div>
+
+    <div class="note">
+      Seats hold the history. Members are swappable — a replacement inherits the
+      seat, not the predecessor's <code>--resume</code> id.
+    </div>
+  </aside>
+
+</div>
+
+<script>
+  document.querySelectorAll('.proj > .row').forEach(r =>
+    r.onclick = () => r.parentElement.classList.toggle('open'));
+  const pick = (sel, cls) => document.querySelectorAll(sel).forEach(el =>
+    el.onclick = () => { document.querySelectorAll(sel).forEach(x => x.classList.remove(cls));
+                         el.classList.add(cls); });
+  pick('.sess','active'); pick('.tab','active'); pick('.seat','active');
+</script>
+</body>
+</html>
