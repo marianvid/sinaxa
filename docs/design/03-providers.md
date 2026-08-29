@@ -55,7 +55,37 @@ Caveats:
 | approvals              | `approval-policy` arg | events you must handle  |
 | system prompt          | `base-instructions`   | via config              |
 
-Leaning to mcp-server first:
+### Restart recovery — measured (the deciding fact)
+
+    codex-reply in a fresh mcp-server  -> "Session not found for thread_id"
+    codex exec resume <id>             -> PELICAN  (3.9s)
+    app-server thread/resume, new proc -> PELICAN  (5.3s)
+
+`codex-reply` only looks in its own process's in-memory registry. But the
+conversation is an ordinary session on disk
+(`~/.codex/sessions/2026/08/30/rollout-*.jsonl`), and `thread/resume` in a
+brand new app-server picks it up intact, returning `sessionId`,
+`forkedFromId`, `parentThreadId` and a preview.
+
+`mcp-server` is NOT marked experimental in `codex --help` — unlike
+`app-server`, `remote-control`, `cloud`, `exec-server`. It is a first-class
+subcommand speaking standard MCP (2025-06-18).
+
+So the choice is not simple-vs-complex. It is:
+
+    mcp-server : stable contract, no way back in after a restart
+    app-server : experimental contract, cheap recovery and streaming
+
+With mcp-server every application restart costs a full replay from our room,
+per Codex member. With app-server we carry the risk of an experimental
+protocol moving under us — which the probes in tools/ will detect the moment
+it does.
+
+Leaning: app-server, with mcp-server as the fallback if it is withdrawn.
+The two cannot be mixed: a thread resumed in app-server cannot be moved back
+into mcp-server.
+
+Older note (before the recovery test), kept for the reasoning:
 - `approval-policy: never` removes the blocked-approval trap for free
 - `model` + `sandbox` + `base-instructions` map one-to-one onto a member
   definition, no translation
