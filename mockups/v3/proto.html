@@ -78,7 +78,6 @@
 
   .main{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
   .top{border-bottom:1px solid var(--line);padding:9px 18px;display:flex;align-items:center;gap:9px}
-  .crumb{font-size:11px;color:var(--dim2)}
   .top h1{font-size:14.5px;margin:0;font-weight:600}
   .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
     padding:2px 9px;cursor:pointer;white-space:nowrap;background:none;font-family:inherit}
@@ -363,7 +362,7 @@ function renderMain(){
   const title = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
 
   document.getElementById('top').innerHTML =
-    `<div><div class="crumb">${proj().name} &nbsp;›&nbsp; ${s.name}</div><h1>${title}</h1></div>
+    `<h1>${title}</h1>
      <div class="grow"></div>
      <button class="chip ${UI.panel?'on':''}" id="mgbtn"
        title="Open the room panel — seats, members, turn-taking">Manage room…</button>
