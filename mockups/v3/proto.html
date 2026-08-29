@@ -182,7 +182,7 @@
 <div class="app closed" id="app">
   <aside class="side">
     <div class="brand"><span class="logo">F</span><b>foundry-lab</b></div>
-    <div class="hd">Projects <u title="New project" onclick="toast('New project — not in this prototype')">+</u></div>
+    <div class="hd">Projects <u title="New project" onclick="newProject()">+</u></div>
     <div class="scroll" id="tree"></div>
     <nav class="nav">
       <div class="nb on"><i>▤</i>Projects</div>
@@ -238,6 +238,30 @@ function mkSession(name, when){
   const team = { id:uid('r'), name:'Team room', kind:'team', members:members.map(m=>m.id),
                  lead:me.id, policy:'lead', rr:0, msgs:[] };
   return { id:uid('s'), name, when, members, humanId:me.id, lead:me.id, rooms:[team] };
+}
+
+const CATALOG = [
+  {name:'Claude',   role:'architect', provider:'claude-cli', model:'opus',
+   settings:'temp 0.3 · read-only tools', prompt:'architect.md', initial:'A', color:'#c96442'},
+  {name:'Claude',   role:'implementer', provider:'claude-cli', model:'sonnet',
+   settings:'temp 0.2 · write tools',    prompt:'implementer.md', initial:'A', color:'#d47a5c'},
+  {name:'Codex',    role:'backend',    provider:'codex-cli',  model:'gpt-5-codex',
+   settings:'reasoning high',            prompt:'backend.md',   initial:'C', color:'#3fbf7f'},
+  {name:'Reviewer', role:'reviewer',   provider:'opencode',   model:'qwen',
+   settings:'—',                         prompt:'reviewer.md',  initial:'R', color:'#7c6cf0'},
+  {name:'Scribe',   role:'notes',      provider:'opencode',   model:'devstral',
+   settings:'—',                         prompt:'scribe.md',    initial:'S', color:'#5aa9c9'},
+];
+
+function newSessionFrom(name, picks){
+  const me = member({id:uid('m'), name:'Marian', kind:'human', initial:'M', color:'#2f6fd0',
+                     provider:'human', model:'cto', settings:'—', prompt:'—'});
+  const members=[me, ...picks.map(c=>member(Object.assign({id:uid('m')}, c,
+    {ctx:{used:0,max:200}, msgs:0})))];
+  const team={id:uid('r'), name:'Team room', kind:'team', members:members.map(m=>m.id),
+              lead:me.id, policy:'lead', rr:0,
+              msgs:[{sys:1,b:`session created · ${members.length-1} agents · lead <em>you</em>`}]};
+  return {id:uid('s'), name, when:'now', members, humanId:me.id, lead:me.id, rooms:[team]};
 }
 
 const DB = { projects:[
@@ -324,6 +348,9 @@ function renderTree(){
         if(so) sd.appendChild(roomList(p,s));
         box.appendChild(sd);
       });
+      const ns=document.createElement('div'); ns.className='add'; ns.textContent='+ New session';
+      ns.onclick=e=>{e.stopPropagation(); newSession(p);};
+      box.appendChild(ns);
       d.appendChild(box);
     }
     el.appendChild(d);
@@ -543,6 +570,31 @@ function pickPolicy(){
       render(); }});
 }
 
+function newProject(){
+  modal({title:'New project', sub:'A project is a folder of sessions.', name:'', ok:'Create',
+    rows:[], hint:'Sessions, rooms and teams live inside it.',
+    onOk:(_,name)=>{ if(!name.trim()) return toast('The project needs a name');
+      const p={id:uid('p'), name:name.trim(), sessions:[]};
+      DB.projects.push(p); UI.open[p.id]=true;
+      toast('“'+p.name+'” created — add a session'); render(); }});
+}
+
+function newSession(p){
+  modal({title:'New session in '+p.name, sub:'Pick the team. You are always a member.',
+    name:'', ok:'Create session',
+    rows:CATALOG.map((c,i)=>({id:String(i), label:c.name+' · '+c.role,
+      right:c.provider+' · '+c.model, checked:i<2})),
+    hint:'A session starts with one Team room holding everyone. Add subrooms later.',
+    onOk:(ids,name)=>{
+      if(!name.trim()) return toast('The session needs a name');
+      if(!ids.length)  return toast('Pick at least one agent');
+      const s=newSessionFrom(name.trim(), ids.map(i=>CATALOG[+i]));
+      p.sessions.unshift(s);
+      UI.pid=p.id; UI.sid=s.id; UI.rid=s.rooms[0].id; UI.open[p.id]=true;
+      UI.inspect={type:'room',id:UI.rid};
+      toast('“'+s.name+'” created'); render(); }});
+}
+
 function newRoom(){
   const s=sess();
   modal({title:'New room', sub:'Pick the members that can see it.', name:'', ok:'Create',
@@ -650,7 +702,7 @@ function modal(o){
       <span>${x.label}${x.note?`<br><span style="font-size:10.5px;color:var(--dim2)">${x.note}</span>`:''}</span>
       <span class="rl">${x.right||''}</span></label>`).join('');
   scrim.innerHTML=`<div class="modal"><h3>${o.title}</h3><div class="sub">${o.sub||''}</div>
-    ${o.name!==undefined?`<input type="text" id="mname" placeholder="room name" value="${o.name}">`:''}
+    ${o.name!==undefined?`<input type="text" id="mname" placeholder="name" value="${o.name}">`:''}
     ${rows}${o.hint?`<div class="hint">${o.hint}</div>`:''}
     <div class="foot"><button class="btn" id="mc">Cancel</button>
       <button class="btn primary" id="mo">${o.ok||'OK'}</button></div></div>`;
