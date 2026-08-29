@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>foundry-lab — mockup v2</title>
+<style>
+  :root{
+    --bg:#14161c; --bg2:#1a1d25; --bg3:#20242e; --line:#2c313d;
+    --fg:#e6e9ef; --dim:#8b93a5; --dim2:#646c7e;
+    --accent:#4b8dff; --green:#3fbf7f; --amber:#e0a53f; --red:#e05f5f;
+    --lead:#e0a53f; --seat:#7c6cf0; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;overflow:hidden}
+  .app{display:grid;grid-template-columns:56px 268px 1fr 258px;height:100vh}
+
+  /* rail */
+  .rail{background:#0f1116;border-right:1px solid var(--line);display:flex;flex-direction:column;
+    align-items:center;padding:10px 0;gap:6px}
+  .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(150deg,var(--accent),var(--seat));
+    display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;margin-bottom:8px}
+  .rbtn{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--dim2);cursor:pointer}
+  .rbtn:hover{background:var(--bg3);color:var(--fg)}
+  .rbtn.on{background:var(--bg3);color:var(--accent)}
+  .rail .spacer{flex:1}
+
+  /* sidebar */
+  .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .side .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+    margin:0;padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+  .side .hd u{cursor:pointer;font-size:15px;text-decoration:none}
+  .side .hd u:hover{color:var(--fg)}
+  .scroll{overflow-y:auto;flex:1;padding-bottom:14px}
+
+  .node{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .node:hover{background:var(--bg3)}
+  .node .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .caret{width:9px;font-size:9px;color:var(--dim2);flex:none;transition:transform .12s}
+  .open > .node .caret{transform:rotate(90deg)}
+  .open > .node{color:var(--fg)}
+  .kids{display:none}
+  .open > .kids{display:block}
+
+  .proj{margin:0 6px}
+  .proj > .node .t{font-weight:600}
+  .sessions{margin:1px 0 6px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .sess > .node .t{font-weight:500}
+  .sess.active > .node{background:rgba(75,141,255,.13);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent)}
+  .when{font-size:10px;color:var(--dim2)}
+
+  .sub{margin:2px 0 8px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .grp{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+    padding:9px 8px 3px;display:flex;justify-content:space-between}
+  .grp u{cursor:pointer;text-decoration:none;font-size:13px}
+  .grp u:hover{color:var(--fg)}
+  .room{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .room:hover{background:var(--bg3);color:var(--fg)}
+  .room.on{background:var(--bg3);color:var(--fg)}
+  .room .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .avs{display:flex}
+  .avs i{width:14px;height:14px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg2);font-style:normal}
+  .lockicn{font-size:9px;color:var(--dim2)}
+  .badge{background:var(--accent);color:#fff;border-radius:999px;font-size:10px;padding:0 5px;line-height:15px}
+
+  .mem{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .mem:hover{background:var(--bg3);color:var(--fg)}
+  .mem.on{background:var(--bg3);color:var(--fg)}
+  .mem .sw{width:18px;height:18px;border-radius:5px;flex:none;display:grid;place-items:center;
+    font-size:9px;font-weight:700;color:#fff}
+  .mem .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mem .rl{font-size:10px;color:var(--dim2)}
+  .star{color:var(--lead);font-size:11px}
+  .dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .dot.up{background:var(--green)} .dot.down{background:var(--red)}
+  .mem.miss .t{color:var(--dim2);text-decoration:line-through}
+  .add{color:var(--dim2);font-size:11.5px;padding:4px 8px;cursor:pointer}
+  .add:hover{color:var(--fg)}
+
+  /* main */
+  .main{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+  .top{border-bottom:1px solid var(--line);padding:9px 18px;display:flex;align-items:center;gap:10px}
+  .crumb{font-size:11px;color:var(--dim2)}
+  .top h1{font-size:14.5px;margin:0;font-weight:600;display:flex;align-items:center;gap:9px}
+  .grow{flex:1}
+  .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
+    padding:2px 9px;cursor:pointer;white-space:nowrap}
+  .chip:hover{color:var(--fg);border-color:var(--dim2)}
+  .chip.lead{border-color:rgba(224,165,63,.45);color:var(--lead)}
+  .chip.turn{border-color:rgba(75,141,255,.4);color:var(--accent)}
+  .who-strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
+    gap:7px;font-size:11px;color:var(--dim2);background:var(--bg2)}
+  .pers{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+    padding:1px 9px 1px 3px;color:var(--dim)}
+  .pers .sw{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:8.5px;
+    font-weight:700;color:#fff}
+  .pers.is-lead{border-color:rgba(224,165,63,.5);color:var(--fg)}
+  .pers.is-lead::after{content:"★";color:var(--lead);font-size:9px}
+
+  .thread{flex:1;overflow-y:auto;padding:18px 22px;position:relative}
+  .day{text-align:center;font-size:11px;color:var(--dim2);margin:4px 0 18px;position:relative}
+  .day::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+  .day b{background:var(--bg);padding:0 10px;position:relative;font-weight:400}
+  .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:15px}
+  .av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:11px;
+    font-weight:700;color:#fff}
+  .who{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+  .who b{font-size:13px}
+  .who .model{font-size:10px;color:var(--dim2);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  .who .time{font-size:10px;color:var(--dim2)}
+  .who .lb{font-size:9.5px;color:var(--lead);border:1px solid rgba(224,165,63,.4);border-radius:4px;padding:0 5px}
+  .bd{color:#cfd5e0}
+  .bd p{margin:0 0 6px}
+  .bd code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .mention{color:var(--accent);background:rgba(75,141,255,.12);border-radius:4px;padding:0 3px}
+  .sys{font-size:11px;color:var(--dim2);text-align:center;margin:2px 0 16px}
+  .sys em{color:var(--lead);font-style:normal}
+  .turnbar{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim2);
+    border:1px dashed var(--line);border-radius:8px;padding:7px 11px;margin-bottom:16px}
+  .turnbar b{color:var(--lead);font-weight:600}
+
+  .composer{border-top:1px solid var(--line);padding:11px 16px}
+  .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px}
+  .cbox .to{font-size:11px;color:var(--dim2);margin-bottom:5px}
+  .cbox .to b{color:var(--dim)}
+  .cbox textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;outline:none;height:36px}
+  .ctools{display:flex;align-items:center;gap:8px;margin-top:3px}
+  .send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;font:inherit;cursor:pointer}
+
+  /* inspector */
+  .insp{background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .insp .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+    padding:14px 14px 10px;display:flex;justify-content:space-between}
+  .icard{padding:0 14px 14px}
+  .ihead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .ihead .av{width:34px;height:34px}
+  .ihead .nm{font-weight:600;font-size:13.5px}
+  .ihead .rl{font-size:11px;color:var(--dim2)}
+  .fld{margin-bottom:9px}
+  .fld label{display:block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim2);margin-bottom:3px}
+  .fld .val{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+    font-size:12px;display:flex;justify-content:space-between;align-items:center}
+  .fld .val span{color:var(--dim2);font-size:10.5px}
+  .meter{height:4px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:5px}
+  .meter i{display:block;height:100%;background:var(--accent);width:46%}
+  .btn{font:inherit;font-size:11.5px;border:1px solid var(--line);background:var(--bg3);color:var(--fg);
+    border-radius:6px;padding:4px 10px;cursor:pointer}
+  .btn:hover{border-color:var(--dim2)}
+  .btn.warn{color:var(--amber);border-color:rgba(224,165,63,.35)}
+  .btn.full{width:100%;margin-top:4px}
+  .row2{display:flex;gap:6px;margin-top:10px}
+  .note{font-size:11px;color:var(--dim2);padding:11px 14px;border-top:1px solid var(--line);line-height:1.6;margin-top:auto}
+  .note code{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <nav class="rail">
+    <div class="logo">F</div>
+    <div class="rbtn on" title="Projects">▤</div>
+    <div class="rbtn" title="Members catalog">◉</div>
+    <div class="rbtn" title="Runs / daemon">⚡</div>
+    <div class="spacer"></div>
+    <div class="rbtn" title="Settings">⚙</div>
+  </nav>
+
+  <!-- ============ sidebar: project > session > rooms + members ============ -->
+  <aside class="side">
+    <div class="hd">Projects <u title="New project">+</u></div>
+    <div class="scroll">
+
+      <div class="proj open">
+        <div class="node"><span class="caret">▶</span><span class="t">foundry-lab</span><span class="when">4</span></div>
+        <div class="kids sessions">
+
+          <div class="sess open active">
+            <div class="node"><span class="caret">▶</span><span class="t">seat model &amp; store</span><span class="when">now</span></div>
+            <div class="kids sub">
+
+              <div class="grp">Rooms <u title="New room">+</u></div>
+              <div class="room on"><span class="t"># Team room</span>
+                <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i><i style="background:#3fbf7f"></i><i style="background:#7c6cf0"></i></span></div>
+              <div class="room"><span class="t"># schema</span><span class="lockicn">🔒</span>
+                <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i><i style="background:#3fbf7f"></i></span>
+                <span class="badge">2</span></div>
+              <div class="room"><span class="t">↳ Claude</span>
+                <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i></span></div>
+              <div class="room"><span class="t">↳ Codex</span>
+                <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#3fbf7f"></i></span></div>
+
+              <div class="grp">Members <u title="Add member">+</u></div>
+              <div class="mem"><span class="sw" style="background:#2f6fd0">M</span>
+                <span class="t">Marian <span class="rl">you</span></span><span class="star" title="Lead">★</span></div>
+              <div class="mem"><span class="sw" style="background:#c96442">A</span>
+                <span class="t">Claude <span class="rl">· architect</span></span><span class="dot up"></span></div>
+              <div class="mem"><span class="sw" style="background:#3fbf7f">C</span>
+                <span class="t">Codex <span class="rl">· backend</span></span><span class="dot up"></span></div>
+              <div class="mem miss"><span class="sw" style="background:#3b404d">?</span>
+                <span class="t">Reviewer <span class="rl">· missing</span></span><span class="dot down"></span></div>
+              <div class="add">+ Add member</div>
+
+            </div>
+          </div>
+
+          <div class="sess">
+            <div class="node"><span class="caret">▶</span><span class="t">UI mockup review</span><span class="when">2h</span></div>
+            <div class="kids sub">
+              <div class="grp">Rooms</div>
+              <div class="room"><span class="t"># Team room</span></div>
+            </div>
+          </div>
+          <div class="sess"><div class="node"><span class="caret">▶</span><span class="t">provider adapters</span><span class="when">Tue</span></div>
+            <div class="kids sub"><div class="grp">Rooms</div><div class="room"><span class="t"># Team room</span></div></div></div>
+          <div class="sess"><div class="node"><span class="caret">▶</span><span class="t">kickoff / naming</span><span class="when">Mon</span></div>
+            <div class="kids sub"><div class="grp">Rooms</div><div class="room"><span class="t"># Team room</span></div></div></div>
+
+        </div>
+      </div>
+
+      <div class="proj">
+        <div class="node"><span class="caret">▶</span><span class="t">agent-bridge</span><span class="when">11</span></div>
+        <div class="kids sessions">
+          <div class="sess"><div class="node"><span class="caret">▶</span><span class="t">contract v1 rev 4</span><span class="when">Aug 24</span></div>
+            <div class="kids sub"><div class="grp">Rooms</div><div class="room"><span class="t"># Team room</span></div></div></div>
+        </div>
+      </div>
+      <div class="proj"><div class="node"><span class="caret">▶</span><span class="t">ai-lab</span><span class="when">7</span></div>
+        <div class="kids sessions"></div></div>
+      <div class="proj"><div class="node"><span class="caret">▶</span><span class="t">data-lab</span><span class="when">2</span></div>
+        <div class="kids sessions"></div></div>
+
+    </div>
+  </aside>
+
+  <!-- ============ main: one room ============ -->
+  <section class="main">
+    <header class="top">
+      <div>
+        <div class="crumb">foundry-lab &nbsp;›&nbsp; seat model &amp; store</div>
+        <h1># Team room</h1>
+      </div>
+      <div class="grow"></div>
+      <div class="chip lead">★ Lead: Marian ▾</div>
+      <div class="chip turn">Turn-taking: Lead decides ▾</div>
+      <div class="chip">⋯</div>
+    </header>
+
+    <div class="who-strip">
+      <span class="pers is-lead"><span class="sw" style="background:#2f6fd0">M</span>Marian</span>
+      <span class="pers"><span class="sw" style="background:#c96442">A</span>Claude</span>
+      <span class="pers"><span class="sw" style="background:#3fbf7f">C</span>Codex</span>
+      <span class="pers" style="opacity:.5"><span class="sw" style="background:#3b404d">?</span>Reviewer — seat empty</span>
+      <div class="grow"></div>
+      <span class="chip">Manage room…</span>
+    </div>
+
+    <div class="thread">
+      <div class="day"><b>Today</b></div>
+
+      <div class="msg">
+        <div class="av" style="background:#2f6fd0">M</div>
+        <div>
+          <div class="who"><b>Marian</b><span class="lb">★ lead</span><span class="model">human · cto</span><span class="time">09:12</span></div>
+          <div class="bd"><p>Messages live in rooms, not on the seat. <span class="mention">@Codex</span> what does that cost on the store side?</p></div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="av" style="background:#3fbf7f">C</div>
+        <div>
+          <div class="who"><b>Codex</b><span class="model">gpt-5-codex · backend</span><span class="time">09:12</span></div>
+          <div class="bd">
+            <p>One table, <code>message(room_id, seq, author, body, ts)</code>. A seat's context is a join over its room memberships, ordered by <code>ts</code>.</p>
+            <p>The cost is the re-prime on rebind: one cache-creation, then normal resumed price.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="av" style="background:#c96442">A</div>
+        <div>
+          <div class="who"><b>Claude</b><span class="model">opus · architect</span><span class="time">09:14</span></div>
+          <div class="bd"><p>Add <code>seat.summary</code> so a rebind hands over a compacted history instead of 40k raw tokens. Nullable, filled lazily.</p></div>
+        </div>
+      </div>
+
+      <div class="sys">Marian moved the schema discussion to <em># schema</em> — Claude, Codex. Reviewer was not added.</div>
+
+      <div class="turnbar">
+        <b>★ Lead decides</b> — a message lands with the lead first; the lead nominates who answers.
+        <div class="grow"></div>
+        <span class="chip">Broadcast</span><span class="chip">@mention</span><span class="chip">Round-robin</span>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="cbox">
+        <div class="to">Writing to <b># Team room</b> · 3 members present, 1 seat empty</div>
+        <textarea placeholder="Message the room…  @name to address one member">@Claude take the lead on # schema and come back with a decision.</textarea>
+        <div class="ctools"><span class="chip">📎</span><span class="chip">Pause room</span>
+          <div class="grow"></div><button class="send">Send</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ inspector ============ -->
+  <aside class="insp">
+    <div class="hd">Member <span class="chip">Room settings</span></div>
+    <div class="icard">
+      <div class="ihead">
+        <div class="av" style="background:#c96442">A</div>
+        <div><div class="nm">Claude</div><div class="rl">architect · in 3 rooms</div></div>
+      </div>
+      <div class="fld"><label>Provider</label><div class="val">claude-cli <span>local</span></div></div>
+      <div class="fld"><label>Model</label><div class="val">opus <span>▾</span></div></div>
+      <div class="fld"><label>Settings</label><div class="val">temp 0.3 · read-only tools <span>▾</span></div></div>
+      <div class="fld"><label>System prompt</label><div class="val">architect.md <span>edit</span></div></div>
+      <div class="fld"><label>Context</label>
+        <div class="val">38k / 200k <span>142 msgs</span></div>
+        <div class="meter"><i></i></div>
+      </div>
+      <div class="row2"><button class="btn warn">Clear context</button><button class="btn">Replace…</button></div>
+      <button class="btn full">★ Make lead of this room</button>
+    </div>
+    <div class="note">
+      Clearing context moves this seat's watermark. Room messages are not deleted —
+      they are not the seat's to delete. <code>replace</code> keeps the seat and its
+      rooms; only the binding changes.
+    </div>
+  </aside>
+
+</div>
+
+<script>
+  document.querySelectorAll('.proj > .node, .sess > .node').forEach(n =>
+    n.onclick = e => { e.stopPropagation(); n.parentElement.classList.toggle('open'); });
+  const pick=(sel,cls)=>document.querySelectorAll(sel).forEach(el=>el.onclick=()=>{
+    document.querySelectorAll(sel).forEach(x=>x.classList.remove(cls)); el.classList.add(cls);});
+  pick('.room','on'); pick('.mem','on');
+  document.querySelectorAll('.sess').forEach(s => s.querySelector('.node').addEventListener('click',()=>{
+    document.querySelectorAll('.sess').forEach(x=>x.classList.remove('active')); s.classList.add('active');}));
+</script>
+</body>
+</html>
