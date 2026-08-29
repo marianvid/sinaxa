@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>foundry-lab — prototype</title>
+<style>
+  :root{
+    --bg:#14161c; --bg2:#1a1d25; --bg3:#20242e; --line:#2c313d;
+    --fg:#e6e9ef; --dim:#8b93a5; --dim2:#646c7e;
+    --accent:#4b8dff; --green:#3fbf7f; --amber:#e0a53f; --red:#e05f5f;
+    --lead:#e0a53f; --seat:#7c6cf0; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;overflow:hidden}
+  .app{display:grid;grid-template-columns:56px 268px 1fr 258px;height:100vh}
+  .grow{flex:1}
+
+  .rail{background:#0f1116;border-right:1px solid var(--line);display:flex;flex-direction:column;
+    align-items:center;padding:10px 0;gap:6px}
+  .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(150deg,var(--accent),var(--seat));
+    display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;margin-bottom:8px}
+  .rbtn{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--dim2);cursor:pointer}
+  .rbtn:hover{background:var(--bg3);color:var(--fg)}
+  .rbtn.on{background:var(--bg3);color:var(--accent)}
+
+  .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+    padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+  .hd u{cursor:pointer;font-size:15px;text-decoration:none}
+  .hd u:hover{color:var(--fg)}
+  .scroll{overflow-y:auto;flex:1;padding-bottom:14px}
+
+  .node{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .node:hover{background:var(--bg3)}
+  .node .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .caret{width:9px;font-size:9px;color:var(--dim2);flex:none;display:inline-block;transition:transform .12s}
+  .caret.o{transform:rotate(90deg)}
+  .proj{margin:0 6px}
+  .proj>.node .t{font-weight:600}
+  .proj>.node.o{color:var(--fg)}
+  .sessions{margin:1px 0 6px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .sess>.node .t{font-weight:500}
+  .sess>.node.act{background:rgba(75,141,255,.13);color:var(--fg);box-shadow:inset 2px 0 0 var(--accent)}
+  .when{font-size:10px;color:var(--dim2)}
+  .sub{margin:2px 0 8px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .grp{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+    padding:9px 8px 3px;display:flex;justify-content:space-between}
+  .grp u{cursor:pointer;text-decoration:none;font-size:13px}
+  .grp u:hover{color:var(--fg)}
+  .room,.mem{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--dim)}
+  .room:hover,.mem:hover{background:var(--bg3);color:var(--fg)}
+  .room.on,.mem.on{background:var(--bg3);color:var(--fg)}
+  .room .t,.mem .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .avs{display:flex}
+  .avs i{width:14px;height:14px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg2);font-style:normal}
+  .lockicn{font-size:9px;color:var(--dim2)}
+  .badge{background:var(--accent);color:#fff;border-radius:999px;font-size:10px;padding:0 5px;line-height:15px}
+  .mem .sw{width:18px;height:18px;border-radius:5px;flex:none;display:grid;place-items:center;
+    font-size:9px;font-weight:700;color:#fff}
+  .mem .rl{font-size:10px;color:var(--dim2)}
+  .star{color:var(--lead);font-size:11px}
+  .dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .dot.up{background:var(--green)} .dot.down{background:var(--red)}
+  .mem.miss .t{color:var(--dim2);text-decoration:line-through}
+  .add{color:var(--dim2);font-size:11.5px;padding:4px 8px;cursor:pointer}
+  .add:hover{color:var(--fg)}
+
+  .main{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+  .top{border-bottom:1px solid var(--line);padding:9px 18px;display:flex;align-items:center;gap:9px}
+  .crumb{font-size:11px;color:var(--dim2)}
+  .top h1{font-size:14.5px;margin:0;font-weight:600}
+  .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
+    padding:2px 9px;cursor:pointer;white-space:nowrap;background:none;font-family:inherit}
+  .chip:hover{color:var(--fg);border-color:var(--dim2)}
+  .chip.lead{border-color:rgba(224,165,63,.45);color:var(--lead)}
+  .chip.turn{border-color:rgba(75,141,255,.4);color:var(--accent)}
+  .chip.sel{background:var(--bg3);color:var(--fg)}
+  .who-strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
+    gap:7px;font-size:11px;background:var(--bg2);flex-wrap:wrap}
+  .pers{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+    padding:1px 9px 1px 3px;color:var(--dim);cursor:pointer}
+  .pers:hover{color:var(--fg)}
+  .pers .sw{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:8.5px;
+    font-weight:700;color:#fff}
+  .pers.is-lead{border-color:rgba(224,165,63,.5);color:var(--fg)}
+  .pers.gone{opacity:.45}
+
+  .thread{flex:1;overflow-y:auto;padding:18px 22px}
+  .day{text-align:center;font-size:11px;color:var(--dim2);margin:4px 0 18px;position:relative}
+  .day::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+  .day b{background:var(--bg);padding:0 10px;position:relative;font-weight:400}
+  .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:15px}
+  .av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:11px;
+    font-weight:700;color:#fff}
+  .who{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap}
+  .who b{font-size:13px}
+  .who .model{font-size:10px;color:var(--dim2);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+  .who .time{font-size:10px;color:var(--dim2)}
+  .who .lb{font-size:9.5px;color:var(--lead);border:1px solid rgba(224,165,63,.4);border-radius:4px;padding:0 5px}
+  .bd{color:#cfd5e0}
+  .bd p{margin:0 0 6px}
+  .bd code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .mention{color:var(--accent);background:rgba(75,141,255,.12);border-radius:4px;padding:0 3px}
+  .sys{font-size:11px;color:var(--dim2);text-align:center;margin:2px 0 16px}
+  .sys em{color:var(--lead);font-style:normal}
+  .wm{text-align:center;font-size:10.5px;color:var(--amber);margin:6px 0 16px;position:relative}
+  .wm::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(224,165,63,.3)}
+  .wm b{background:var(--bg);padding:0 10px;position:relative;font-weight:400}
+  .empty{color:var(--dim2);text-align:center;margin-top:60px;font-size:12.5px;line-height:1.8}
+  .think{color:var(--dim2);font-style:italic;font-size:12px}
+
+  .composer{border-top:1px solid var(--line);padding:11px 16px}
+  .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px}
+  .cbox.focus{border-color:rgba(75,141,255,.5)}
+  .cbox .to{font-size:11px;color:var(--dim2);margin-bottom:5px}
+  .cbox .to b{color:var(--dim)}
+  .cbox textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;outline:none;height:36px}
+  .ctools{display:flex;align-items:center;gap:8px;margin-top:3px}
+  .send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;
+    font:inherit;cursor:pointer}
+  .send:disabled{opacity:.4;cursor:default}
+
+  .insp{background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .icard{padding:0 14px 14px;overflow-y:auto}
+  .ihead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .ihead .av{width:34px;height:34px}
+  .ihead .nm{font-weight:600;font-size:13.5px}
+  .ihead .rl{font-size:11px;color:var(--dim2)}
+  .fld{margin-bottom:9px}
+  .fld label{display:block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--dim2);margin-bottom:3px}
+  .fld .val{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+    font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .fld .val span{color:var(--dim2);font-size:10.5px}
+  .fld select{background:none;border:0;color:var(--fg);font:inherit;font-size:12px;outline:none;flex:1}
+  .fld select option{background:var(--bg3)}
+  .meter{height:4px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:5px}
+  .meter i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .btn{font:inherit;font-size:11.5px;border:1px solid var(--line);background:var(--bg3);color:var(--fg);
+    border-radius:6px;padding:4px 10px;cursor:pointer}
+  .btn:hover{border-color:var(--dim2)}
+  .btn.warn{color:var(--amber);border-color:rgba(224,165,63,.35)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.full{width:100%;margin-top:6px}
+  .btn:disabled{opacity:.4;cursor:default}
+  .row2{display:flex;gap:6px;margin-top:10px}
+  .note{font-size:11px;color:var(--dim2);padding:11px 14px;border-top:1px solid var(--line);
+    line-height:1.6;margin-top:auto}
+  .note code{color:var(--dim)}
+
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:50}
+  .modal{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px;width:330px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6)}
+  .modal h3{margin:0 0 3px;font-size:14px}
+  .modal .sub{font-size:11.5px;color:var(--dim2);margin-bottom:12px}
+  .modal input[type=text],.modal select{background:var(--bg3);border:1px solid var(--line);border-radius:6px;
+    color:var(--fg);font:inherit;font-size:12.5px;padding:6px 9px;width:100%;margin-bottom:10px;outline:none}
+  .modal label.pickrow{display:flex;align-items:center;gap:9px;padding:6px;border-radius:6px;
+    cursor:pointer;font-size:12.5px}
+  .modal label.pickrow:hover{background:var(--bg3)}
+  .modal .rl{font-size:10px;color:var(--dim2);margin-left:auto;text-transform:uppercase;letter-spacing:.05em}
+  .modal .foot{display:flex;gap:6px;justify-content:flex-end;margin-top:12px}
+  .modal .hint{font-size:10.5px;color:var(--dim2);margin-top:10px;line-height:1.5}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg3);
+    border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:12px;z-index:60;
+    box-shadow:0 10px 30px rgba(0,0,0,.5)}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="logo">F</div>
+    <div class="rbtn on" title="Projects">▤</div>
+    <div class="rbtn" title="Members catalog" onclick="toast('Members catalog — not in this prototype')">◉</div>
+    <div class="rbtn" title="Runs / daemon" onclick="toast('Daemon view — not in this prototype')">⚡</div>
+    <div class="grow"></div>
+    <div class="rbtn" title="Settings" onclick="toast('Settings — not in this prototype')">⚙</div>
+  </nav>
+
+  <aside class="side">
+    <div class="hd">Projects <u title="New project" onclick="toast('New project — not in this prototype')">+</u></div>
+    <div class="scroll" id="tree"></div>
+  </aside>
+
+  <section class="main">
+    <header class="top" id="top"></header>
+    <div class="who-strip" id="strip"></div>
+    <div class="thread" id="thread"></div>
+    <div class="composer">
+      <div class="cbox" id="cbox">
+        <div class="to" id="cto"></div>
+        <textarea id="input" placeholder="Message the room…   @name to address one member"></textarea>
+        <div class="ctools">
+          <button class="chip" onclick="toast('Attachment — not in this prototype')">📎</button>
+          <button class="chip" id="pausebtn">Pause room</button>
+          <div class="grow"></div>
+          <button class="send" id="sendbtn">Send</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="insp" id="insp"></aside>
+</div>
+
+<script>
+/* ---------------------------------------------------------------- state */
+let SEQ = 1, CLOCK = 9*60+12;
+const uid = p => p + (SEQ++);
+const clock = () => { CLOCK += 1 + Math.floor(Math.random()*3);
+  return String(Math.floor(CLOCK/60)).padStart(2,'0')+':'+String(CLOCK%60).padStart(2,'0'); };
+
+function member(o){ return Object.assign({
+  kind:'agent', status:'up', ctx:{used:0,max:200}, msgs:0, watermark:0, paused:false }, o); }
+
+function mkSession(name, when){
+  const me = member({id:uid('m'), name:'Marian', kind:'human', initial:'M', color:'#2f6fd0',
+                     provider:'human', model:'cto', settings:'—', prompt:'—'});
+  const cl = member({id:uid('m'), name:'Claude', role:'architect', initial:'A', color:'#c96442',
+                     provider:'claude-cli', model:'opus', settings:'temp 0.3 · read-only tools',
+                     prompt:'architect.md', ctx:{used:38,max:200}, msgs:142});
+  const cx = member({id:uid('m'), name:'Codex', role:'backend', initial:'C', color:'#3fbf7f',
+                     provider:'codex-cli', model:'gpt-5-codex', settings:'reasoning high',
+                     prompt:'backend.md', ctx:{used:21,max:200}, msgs:96});
+  const rv = member({id:uid('m'), name:'Reviewer', role:'reviewer', initial:'?', color:'#3b404d',
+                     provider:'opencode', model:'qwen', settings:'—', prompt:'reviewer.md',
+                     status:'missing', ctx:{used:6,max:200}, msgs:18});
+  const members = [me, cl, cx, rv];
+  const team = { id:uid('r'), name:'Team room', kind:'team', members:members.map(m=>m.id),
+                 lead:me.id, policy:'lead', rr:0, msgs:[] };
+  return { id:uid('s'), name, when, members, humanId:me.id, lead:me.id, rooms:[team] };
+}
+
+const DB = { projects:[
+  { id:'p1', name:'foundry-lab', sessions:[
+      mkSession('seat model & store','now'),
+      mkSession('UI mockup review','2h'),
+      mkSession('provider adapters','Tue'),
+      mkSession('kickoff / naming','Mon')]},
+  { id:'p2', name:'agent-bridge', sessions:[
+      mkSession('contract v1 rev 4','Aug 24'), mkSession('worker caps','Aug 22')]},
+  { id:'p3', name:'ai-lab', sessions:[ mkSession('rtx benchmark','Aug 19')]},
+  { id:'p4', name:'data-lab', sessions:[ mkSession('audio pipeline','Jul 30')]},
+]};
+
+/* seed the first session so there is something to read */
+(function seed(){
+  const s = DB.projects[0].sessions[0], [me,cl,cx,rv] = s.members, t = s.rooms[0];
+  t.msgs = [
+    {a:me.id,t:'09:12',b:'Messages live in rooms, not on the member. <span class="mention">@Codex</span> what does that cost on the store side?'},
+    {a:cx.id,t:'09:12',b:'One table, <code>message(room_id, seq, author, body, ts)</code>. A member\'s context is a join over its room memberships, ordered by <code>ts</code>.'},
+    {a:cl.id,t:'09:14',b:'Add <code>summary</code> so a rebind hands over a compacted history instead of 40k raw tokens. Nullable, filled lazily.'},
+  ];
+  const g = { id:uid('r'), name:'schema', kind:'group', members:[me.id,cl.id,cx.id],
+              lead:cl.id, policy:'lead', rr:0, msgs:[
+    {a:me.id,t:'09:20',b:'<span class="mention">@Claude</span> you are lead here. Settle the seq numbering with Codex and come back with one answer.'},
+    {a:cl.id,t:'09:21',b:'Per-room <code>seq</code>, monotonic, gapless. Global ordering by <code>ts</code> only for the projection. <span class="mention">@Codex</span> objections?'},
+  ]};
+  const d = { id:uid('r'), name:'Claude', kind:'direct', members:[me.id,cl.id], lead:me.id,
+              policy:'mention', rr:0, msgs:[
+    {a:me.id,t:'08:40',b:'Before the others join — is the watermark idea sound, or am I fooling myself?'},
+    {a:cl.id,t:'08:41',b:'Sound. It is the only version that does not let one member delete a shared room\'s history.'},
+  ]};
+  s.rooms.push(g, d);
+  CLOCK = 9*60+25;
+})();
+
+const UI = { pid:'p1', sid:DB.projects[0].sessions[0].id, rid:DB.projects[0].sessions[0].rooms[0].id,
+             open:{p1:true}, sopen:{}, inspect:null };
+UI.sopen[UI.sid] = true;
+UI.inspect = {type:'member', id:DB.projects[0].sessions[0].members[1].id};
+
+/* ---------------------------------------------------------------- lookups */
+const proj = () => DB.projects.find(p=>p.id===UI.pid);
+const sess = () => { for(const p of DB.projects){const s=p.sessions.find(x=>x.id===UI.sid); if(s)return s;} };
+const room = () => sess().rooms.find(r=>r.id===UI.rid);
+const mem  = id => sess().members.find(m=>m.id===id);
+const roomMembers = r => r.members.map(mem).filter(Boolean);
+const agentsIn = r => roomMembers(r).filter(m=>m.kind==='agent' && m.status==='up' && !m.paused);
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+const POLICY = { lead:'Lead decides', broadcast:'Broadcast', mention:'@mention only', round_robin:'Round-robin' };
+const POLICY_HINT = {
+  lead:'the message reaches the lead first; the lead nominates who answers',
+  broadcast:'every live agent in the room answers — N inferences per message',
+  mention:'only the members you name answer',
+  round_robin:'one agent answers per message, in fixed order'
+};
+
+/* ---------------------------------------------------------------- render */
+function render(){ renderTree(); renderMain(); renderInsp(); }
+
+function renderTree(){
+  const el = document.getElementById('tree'); el.innerHTML='';
+  DB.projects.forEach(p=>{
+    const open = !!UI.open[p.id];
+    const d = document.createElement('div'); d.className='proj';
+    d.innerHTML = `<div class="node ${open?'o':''}"><span class="caret ${open?'o':''}">▶</span>
+      <span class="t">${p.name}</span><span class="when">${p.sessions.length}</span></div>`;
+    d.querySelector('.node').onclick=()=>{UI.open[p.id]=!open; render();};
+    if(open){
+      const box=document.createElement('div'); box.className='sessions';
+      p.sessions.forEach(s=>{
+        const so = !!UI.sopen[s.id], act = s.id===UI.sid;
+        const sd=document.createElement('div'); sd.className='sess';
+        sd.innerHTML=`<div class="node ${act?'act':''}"><span class="caret ${so?'o':''}">▶</span>
+          <span class="t">${s.name}</span><span class="when">${s.when}</span></div>`;
+        sd.querySelector('.node').onclick=()=>{
+          UI.sopen[s.id]=!so;
+          if(!act && UI.sopen[s.id]){ UI.pid=p.id; UI.sid=s.id; UI.rid=s.rooms[0].id;
+            UI.inspect={type:'room',id:s.rooms[0].id}; }
+          render();
+        };
+        if(so) sd.appendChild(sessionBody(p,s));
+        box.appendChild(sd);
+      });
+      d.appendChild(box);
+    }
+    el.appendChild(d);
+  });
+}
+
+function sessionBody(p,s){
+  const box=document.createElement('div'); box.className='sub';
+  const g1=document.createElement('div'); g1.className='grp';
+  g1.innerHTML='Rooms <u title="New room">+</u>';
+  g1.querySelector('u').onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id; newRoom();};
+  box.appendChild(g1);
+
+  s.rooms.forEach(r=>{
+    const on = (s.id===UI.sid && r.id===UI.rid);
+    const label = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
+    const el=document.createElement('div'); el.className='room'+(on?' on':'');
+    el.innerHTML=`<span class="t">${label}</span>
+      ${r.kind==='group'?'<span class="lockicn">🔒</span>':''}
+      <span class="avs">${roomMembers(r).map(m=>`<i style="background:${m.color}"></i>`).join('')}</span>`;
+    el.onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id; UI.rid=r.id;
+      UI.inspect={type:'room',id:r.id}; render();};
+    box.appendChild(el);
+  });
+
+  const g2=document.createElement('div'); g2.className='grp';
+  g2.innerHTML='Members <u title="Add member">+</u>';
+  g2.querySelector('u').onclick=e=>{e.stopPropagation(); toast('Add member — pick from the catalog (not in this prototype)');};
+  box.appendChild(g2);
+
+  s.rooms.length && s.members.forEach(m=>{
+    const on = UI.inspect && UI.inspect.type==='member' && UI.inspect.id===m.id && s.id===UI.sid;
+    const isLead = (s.id===UI.sid) && room() && room().lead===m.id;
+    const el=document.createElement('div');
+    el.className='mem'+(on?' on':'')+(m.status==='missing'?' miss':'');
+    el.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>
+      <span class="t">${m.name} <span class="rl">${m.kind==='human'?'you':'· '+m.role}</span></span>
+      ${isLead?'<span class="star" title="Lead of the open room">★</span>':''}
+      ${m.kind==='agent'?`<span class="dot ${m.status==='up'?'up':'down'}"></span>`:''}`;
+    el.onclick=e=>{e.stopPropagation(); UI.pid=p.id; UI.sid=s.id;
+      UI.inspect={type:'member',id:m.id}; render();};
+    box.appendChild(el);
+  });
+  return box;
+}
+
+function renderMain(){
+  const s=sess(), r=room(), lead=mem(r.lead);
+  const title = r.kind==='direct' ? '↳ '+r.name : '# '+r.name;
+  document.getElementById('top').innerHTML =
+    `<div><div class="crumb">${proj().name} &nbsp;›&nbsp; ${s.name}</div><h1>${title}</h1></div>
+     <div class="grow"></div>
+     <button class="chip lead" id="leadbtn">★ Lead: ${lead?lead.name:'—'} ▾</button>
+     <button class="chip turn" id="turnbtn">Turn-taking: ${POLICY[r.policy]} ▾</button>
+     <button class="chip" id="morebtn">⋯</button>`;
+  document.getElementById('leadbtn').onclick=pickLead;
+  document.getElementById('turnbtn').onclick=pickPolicy;
+  document.getElementById('morebtn').onclick=()=>toast('Rename / archive / export — not in this prototype');
+
+  const strip=document.getElementById('strip'); strip.innerHTML='';
+  roomMembers(r).forEach(m=>{
+    const b=document.createElement('span');
+    b.className='pers'+(m.id===r.lead?' is-lead':'')+(m.status==='missing'?' gone':'');
+    b.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>${m.name}`
+      + (m.id===r.lead?' <span class="star">★</span>':'')
+      + (m.status==='missing'?' — seat empty':'') + (m.paused?' — paused':'');
+    b.onclick=()=>{UI.inspect={type:'member',id:m.id}; render();};
+    strip.appendChild(b);
+  });
+  const sp=document.createElement('div'); sp.className='grow'; strip.appendChild(sp);
+  const mg=document.createElement('button'); mg.className='chip'; mg.textContent='Manage room…';
+  mg.onclick=manageRoom; strip.appendChild(mg);
+
+  const th=document.getElementById('thread');
+  if(!r.msgs.length){
+    th.innerHTML=`<div class="empty">No messages in <b>${title}</b> yet.<br>
+      Turn-taking is <b>${POLICY[r.policy]}</b> — ${POLICY_HINT[r.policy]}.</div>`;
+  } else {
+    th.innerHTML='<div class="day"><b>Today</b></div>' + r.msgs.map(m=>{
+      if(m.sys) return `<div class="sys">${m.b}</div>`;
+      if(m.wm)  return `<div class="wm"><b>${m.b}</b></div>`;
+      const a=mem(m.a); if(!a) return '';
+      return `<div class="msg"><div class="av" style="background:${a.color}">${a.initial}</div><div>
+        <div class="who"><b>${a.name}</b>
+          ${a.id===r.lead?'<span class="lb">★ lead</span>':''}
+          <span class="model">${a.kind==='human'?'human · cto':a.model+' · '+a.role}</span>
+          <span class="time">${m.t}</span></div>
+        <div class="bd"><p>${m.b}</p></div></div></div>`;
+    }).join('');
+  }
+  th.scrollTop = th.scrollHeight;
+
+  const live = agentsIn(r).length, tot = roomMembers(r).filter(m=>m.kind==='agent').length;
+  document.getElementById('cto').innerHTML =
+    `Writing to <b>${title}</b> · ${live} of ${tot} agents live · ${POLICY[r.policy]}`;
+  document.getElementById('pausebtn').textContent = r.paused? 'Resume room':'Pause room';
+  document.getElementById('pausebtn').onclick=()=>{r.paused=!r.paused;
+    toast(r.paused?'Room paused — agents will not answer':'Room resumed'); render();};
+}
+
+function renderInsp(){
+  const el=document.getElementById('insp');
+  if(UI.inspect && UI.inspect.type==='member'){ const m=mem(UI.inspect.id); if(m) return inspMember(el,m); }
+  return inspRoom(el);
+}
+
+function inspMember(el,m){
+  const s=sess(), inRooms=s.rooms.filter(r=>r.members.includes(m.id)).length;
+  const pct=Math.round(m.ctx.used/m.ctx.max*100);
+  const r=room(), isLead=r.lead===m.id, inRoom=r.members.includes(m.id);
+  el.innerHTML=`
+   <div class="hd">Member <button class="chip" id="toroom">Room settings</button></div>
+   <div class="icard">
+    <div class="ihead"><div class="av" style="background:${m.color}">${m.initial}</div>
+      <div><div class="nm">${m.name}</div>
+        <div class="rl">${m.kind==='human'?'you · admin':m.role} · in ${inRooms} room${inRooms===1?'':'s'}</div></div></div>
+    ${m.kind==='human'? `
+      <div class="fld"><label>Role</label><div class="val">human · cto <span>always a member</span></div></div>
+      <div class="fld"><label>Rooms</label><div class="val">every room <span>cannot be removed</span></div></div>
+      <button class="btn full" id="mklead" ${isLead?'disabled':''}>★ ${isLead?'Already lead here':'Take lead of this room'}</button>`
+    : `
+      <div class="fld"><label>Provider</label><div class="val">${m.provider}
+        <span>${m.status==='missing'?'not configured':'local'}</span></div></div>
+      <div class="fld"><label>Model</label><div class="val">
+        <select id="model"><option ${m.model==='opus'?'selected':''}>opus</option>
+          <option ${m.model==='sonnet'?'selected':''}>sonnet</option>
+          <option ${m.model==='gpt-5-codex'?'selected':''}>gpt-5-codex</option>
+          <option ${m.model==='qwen'?'selected':''}>qwen</option></select></div></div>
+      <div class="fld"><label>Settings</label><div class="val">${m.settings} <span>edit</span></div></div>
+      <div class="fld"><label>System prompt</label><div class="val">${m.prompt} <span>edit</span></div></div>
+      <div class="fld"><label>Context</label>
+        <div class="val">${m.ctx.used}k / ${m.ctx.max}k <span>${m.msgs} msgs</span></div>
+        <div class="meter"><i style="width:${pct}%"></i></div>
+        ${m.watermark?`<div style="font-size:10.5px;color:var(--amber);margin-top:5px">
+          watermark set — replay starts after it</div>`:''}
+      </div>
+      <div class="row2">
+        <button class="btn warn" id="clr" ${m.status==='missing'?'disabled':''}>Clear context</button>
+        <button class="btn" id="rep">${m.status==='missing'?'Assign member…':'Replace…'}</button>
+      </div>
+      <button class="btn full" id="pz" ${m.status==='missing'?'disabled':''}>${m.paused?'Resume member':'Pause member'}</button>
+      <button class="btn full" id="mklead" ${(isLead||!inRoom||m.status==='missing')?'disabled':''}>
+        ★ ${isLead?'Already lead here':(inRoom?'Make lead of this room':'Not in this room')}</button>`}
+   </div>
+   <div class="note">Clearing context moves this member's watermark. Room messages are not deleted —
+     they are not one member's to delete. <code>replace</code> keeps the seat and its rooms;
+     only the binding changes.</div>`;
+  el.querySelector('#toroom').onclick=()=>{UI.inspect={type:'room',id:room().id}; render();};
+  const q=id=>el.querySelector(id);
+  q('#mklead') && (q('#mklead').onclick=()=>{ const r=room(); r.lead=m.id;
+    r.msgs.push({sys:1,b:`<em>★ ${m.name}</em> is now lead of this room.`});
+    toast(m.name+' is lead of # '+r.name); render(); });
+  q('#clr') && (q('#clr').onclick=()=>{ m.watermark=m.msgs; m.ctx.used=0; m.msgs=0;
+    room().msgs.push({wm:1,b:`context cleared for ${m.name} — replay starts here`});
+    toast(m.name+"'s context cleared (room history kept)"); render(); });
+  q('#pz') && (q('#pz').onclick=()=>{ m.paused=!m.paused;
+    toast(m.name+(m.paused?' paused':' resumed')); render(); });
+  q('#rep') && (q('#rep').onclick=()=>replaceMember(m));
+  q('#model') && (q('#model').onchange=e=>{ m.model=e.target.value;
+    toast(m.name+' → '+m.model+' (context kept)'); render(); });
+}
+
+function inspRoom(el){
+  const r=room(), s=sess();
+  el.innerHTML=`
+   <div class="hd">Room</div>
+   <div class="icard">
+    <div class="fld"><label>Name</label><div class="val">${r.kind==='direct'?'↳ ':'# '}${r.name}
+      <span>${r.kind}</span></div></div>
+    <div class="fld"><label>Lead</label><div class="val">${mem(r.lead)?mem(r.lead).name:'—'} <span>★</span></div></div>
+    <div class="fld"><label>Turn-taking</label><div class="val">
+      <select id="pol">${Object.keys(POLICY).map(k=>
+        `<option value="${k}" ${r.policy===k?'selected':''}>${POLICY[k]}</option>`).join('')}</select></div>
+      <div style="font-size:10.5px;color:var(--dim2);margin-top:5px">${POLICY_HINT[r.policy]}</div></div>
+    <div class="fld"><label>Members (${r.members.length})</label>
+      ${s.members.map(m=>{
+        const inR=r.members.includes(m.id), fixed=(m.kind==='human'||r.kind==='team');
+        return `<label class="pickrow" style="font-size:12px">
+          <input type="checkbox" data-mid="${m.id}" ${inR?'checked':''} ${fixed?'disabled':''}>
+          ${m.name} <span class="rl">${m.kind==='human'?'you':m.role}</span></label>`;}).join('')}
+    </div>
+    <div class="fld"><label>Messages</label><div class="val">${r.msgs.filter(m=>!m.sys&&!m.wm).length}
+      <span>visible only to members</span></div></div>
+    <button class="btn full" id="del" ${r.kind==='team'?'disabled':''}>
+      ${r.kind==='team'?'The team room cannot be deleted':'Delete room'}</button>
+   </div>
+   <div class="note">A room is a subset of the session's members. You are in every room.
+     Members outside a room never learn it exists.</div>`;
+  el.querySelector('#pol').onchange=e=>{ r.policy=e.target.value;
+    r.msgs.push({sys:1,b:`turn-taking set to <em>${POLICY[r.policy]}</em> — ${POLICY_HINT[r.policy]}`});
+    render(); };
+  el.querySelectorAll('input[data-mid]').forEach(cb=>cb.onchange=()=>{
+    const id=cb.dataset.mid;
+    if(cb.checked){ r.members.push(id); r.msgs.push({sys:1,b:`<em>${mem(id).name}</em> was added to the room`}); }
+    else { r.members=r.members.filter(x=>x!==id);
+           if(r.lead===id){ r.lead=sess().humanId;
+             r.msgs.push({sys:1,b:`<em>${mem(id).name}</em> left; lead falls back to you`}); }
+           else r.msgs.push({sys:1,b:`<em>${mem(id).name}</em> was removed from the room`}); }
+    render(); });
+  el.querySelector('#del').onclick=()=>{ if(r.kind==='team')return;
+    const s=sess(); s.rooms=s.rooms.filter(x=>x.id!==r.id); UI.rid=s.rooms[0].id;
+    UI.inspect={type:'room',id:UI.rid}; toast('Room deleted'); render(); };
+}
+
+/* ---------------------------------------------------------------- actions */
+function pickLead(){
+  const r=room();
+  modal({title:'Lead of # '+r.name, sub:'The lead nominates who answers when turn-taking is “Lead decides”.',
+    rows: roomMembers(r).filter(m=>m.status!=='missing').map(m=>({
+      id:m.id, label:m.name, right:(m.kind==='human'?'you':m.role), checked:m.id===r.lead })),
+    radio:true, ok:'Set lead',
+    hint:'A human lead means you decide by @mention. An agent lead becomes the dispatcher.',
+    onOk:ids=>{ if(!ids.length)return; r.lead=ids[0];
+      r.msgs.push({sys:1,b:`<em>★ ${mem(ids[0]).name}</em> is now lead of this room.`});
+      toast(mem(ids[0]).name+' is lead'); render(); }});
+}
+
+function pickPolicy(){
+  const r=room();
+  modal({title:'Turn-taking in # '+r.name, sub:'Who answers when a message lands here.',
+    rows:Object.keys(POLICY).map(k=>({id:k,label:POLICY[k],right:'',checked:r.policy===k,
+      note:POLICY_HINT[k]})), radio:true, ok:'Apply',
+    onOk:ids=>{ if(!ids.length)return; r.policy=ids[0];
+      r.msgs.push({sys:1,b:`turn-taking set to <em>${POLICY[r.policy]}</em> — ${POLICY_HINT[r.policy]}`});
+      render(); }});
+}
+
+function newRoom(){
+  const s=sess();
+  modal({title:'New room', sub:'Pick the members that can see it.', name:'', ok:'Create',
+    rows:s.members.map(m=>({id:m.id,label:m.name,
+      right:(m.kind==='human'?'you — always in':(m.status==='missing'?'missing':m.role)),
+      checked:m.kind==='human', disabled:(m.kind==='human'||m.status==='missing')?m.kind==='human':false,
+      forced:m.kind==='human'})),
+    hint:'You are always a member. Members outside the room never learn it exists.',
+    onOk:(ids,name)=>{
+      if(!name.trim()) return toast('The room needs a name');
+      const ms=[...new Set([s.humanId,...ids])];
+      const r={id:uid('r'),name:name.trim(),kind:ms.length<=2?'direct':'group',
+               members:ms,lead:s.humanId,policy:'lead',rr:0,
+               msgs:[{sys:1,b:`room created with ${ms.length} members · lead <em>you</em> · Lead decides`}]};
+      s.rooms.push(r); UI.rid=r.id; UI.inspect={type:'room',id:r.id};
+      toast('# '+r.name+' created'); render(); }});
+}
+
+function manageRoom(){ UI.inspect={type:'room',id:room().id}; render(); }
+
+function replaceMember(m){
+  const CAT=[{p:'claude-cli',mo:'opus'},{p:'claude-cli',mo:'sonnet'},{p:'codex-cli',mo:'gpt-5-codex'},
+             {p:'opencode',mo:'qwen'},{p:'opencode',mo:'devstral'}];
+  modal({title:'Assign to the “'+(m.role||m.name)+'” seat',
+    sub:'The seat keeps its rooms and all history. Only the binding changes.',
+    rows:CAT.map((c,i)=>({id:String(i),label:c.p+' · '+c.mo,
+      right:(c.p===m.provider&&c.mo===m.model)?'current':'',checked:false})),
+    radio:true, ok:'Assign',
+    hint:'The replacement is primed with the seat\'s history (or its summary), not with the predecessor\'s --resume id.',
+    onOk:ids=>{ if(!ids.length)return; const c=CAT[+ids[0]];
+      m.provider=c.p; m.model=c.mo; m.status='up'; m.initial=c.p[0].toUpperCase();
+      m.color = c.p==='claude-cli'?'#c96442':(c.p==='codex-cli'?'#3fbf7f':'#7c6cf0');
+      room().msgs.push({sys:1,b:`the <em>${m.role}</em> seat is now held by ${c.p} · ${c.mo} — ${m.msgs} messages of history handed over`});
+      toast('Seat reassigned — history kept'); render(); }});
+}
+
+/* ---------------------------------------------------------------- talking */
+const LINES = {
+  'claude-cli':[ 'Two ways to do it. The cheap one is a view over <code>message</code>; the correct one is a materialised projection per member. I would start cheap and measure.',
+    'That works, but it puts the invariant in two places. Keep it in the store and let the UI read it.',
+    'Careful — that is the same mistake we made in v1: the cursor became the source of truth and we could not recover it.',
+    'Agreed on the shape. I would name it <code>watermark</code>, not <code>offset</code> — an offset invites arithmetic.' ],
+  'codex-cli':[ 'Schema-wise that is one index: <code>(room_id, seq)</code>. Everything else is a scan we can afford.',
+    'I can do that inside one transaction, so a crash between the two writes cannot split the state.',
+    'It costs one extra write per message. Acceptable. What is not acceptable is doing it per read.',
+    'Constraint: <code>seq</code> must be gapless per room, otherwise replay cannot detect a hole.' ],
+  'opencode':[ 'Reading it as a reviewer: the failure mode you are not covering is two members clearing context at the same time.',
+    'The naming is inconsistent — <code>member</code> in the UI, <code>seat</code> in the docs. Pick one.',
+    'No objection to the design. I would add one test: rebind while a turn is in flight.' ]
+};
+const pickLine = m => { m._i=(m._i||0); const pool=LINES[m.provider]||LINES['opencode'];
+  return pool[m._i++ % pool.length]; };
+
+function speak(m, r){
+  const t=clock();
+  r.msgs.push({a:m.id,t,b:pickLine(m)});
+  m.msgs++; m.ctx.used=Math.min(m.ctx.max, m.ctx.used+Math.ceil(2+Math.random()*3));
+}
+
+function send(){
+  const inp=document.getElementById('input'), raw=inp.value.trim();
+  if(!raw) return;
+  const r=room(), s=sess();
+  const html = esc(raw).replace(/@(\w+)/g,'<span class="mention">@$1</span>');
+  r.msgs.push({a:s.humanId,t:clock(),b:html}); inp.value=''; render();
+
+  if(r.paused){ setTimeout(()=>{ r.msgs.push({sys:1,b:'room is paused — nobody was woken'});
+    render(); },250); return; }
+
+  const named = agentsIn(r).filter(m=>new RegExp('@'+m.name,'i').test(raw));
+  let speakers=[], preamble=null;
+
+  if(r.policy==='broadcast')      speakers=agentsIn(r);
+  else if(r.policy==='mention')   speakers=named;
+  else if(r.policy==='round_robin'){ const a=agentsIn(r);
+    if(a.length){ speakers=[a[r.rr % a.length]]; r.rr++; } }
+  else { /* lead */
+    const lead=mem(r.lead);
+    if(!lead || lead.kind==='human'){ speakers=named;
+      if(!named.length) preamble='you are lead here — nobody was woken. Name someone with @, or change turn-taking.'; }
+    else {
+      const others=agentsIn(r).filter(m=>m.id!==lead.id);
+      const pickd = named.length? named.filter(m=>m.id!==lead.id)
+                                : (others.length?[others[r.rr++ % others.length]]:[]);
+      if(pickd.length){ preamble=`★ ${lead.name} (lead) nominates <em>${pickd.map(m=>m.name).join(', ')}</em>`;
+        speakers=pickd; }
+      else speakers=[lead];
+    }
+  }
+
+  if(preamble) setTimeout(()=>{ r.msgs.push({sys:1,b:preamble}); render(); }, 350);
+  if(!speakers.length && !preamble)
+    setTimeout(()=>{ r.msgs.push({sys:1,b:'nobody was named — no agent was woken'}); render(); }, 350);
+
+  speakers.forEach((m,i)=> setTimeout(()=>{ speak(m,r); render(); }, 700 + i*750));
+}
+
+/* ---------------------------------------------------------------- modal */
+function modal(o){
+  const scrim=document.createElement('div'); scrim.className='scrim';
+  const rows=o.rows.map(x=>`
+    <label class="pickrow">
+      <input type="${o.radio?'radio':'checkbox'}" name="pk" value="${x.id}"
+        ${x.checked?'checked':''} ${x.forced?'checked disabled':''}>
+      <span>${x.label}${x.note?`<br><span style="font-size:10.5px;color:var(--dim2)">${x.note}</span>`:''}</span>
+      <span class="rl">${x.right||''}</span></label>`).join('');
+  scrim.innerHTML=`<div class="modal"><h3>${o.title}</h3><div class="sub">${o.sub||''}</div>
+    ${o.name!==undefined?`<input type="text" id="mname" placeholder="room name" value="${o.name}">`:''}
+    ${rows}${o.hint?`<div class="hint">${o.hint}</div>`:''}
+    <div class="foot"><button class="btn" id="mc">Cancel</button>
+      <button class="btn primary" id="mo">${o.ok||'OK'}</button></div></div>`;
+  document.body.appendChild(scrim);
+  const close=()=>scrim.remove();
+  scrim.onclick=e=>{ if(e.target===scrim) close(); };
+  scrim.querySelector('#mc').onclick=close;
+  scrim.querySelector('#mo').onclick=()=>{
+    const ids=[...scrim.querySelectorAll('input[name=pk]:checked')].map(i=>i.value);
+    const nm=scrim.querySelector('#mname'); close(); o.onOk(ids, nm?nm.value:''); };
+  const f=scrim.querySelector('#mname'); f&&f.focus();
+}
+
+let TT;
+function toast(t){ clearTimeout(TT);
+  document.querySelectorAll('.toast').forEach(x=>x.remove());
+  const d=document.createElement('div'); d.className='toast'; d.textContent=t;
+  document.body.appendChild(d); TT=setTimeout(()=>d.remove(),2600); }
+
+/* ---------------------------------------------------------------- boot */
+document.getElementById('sendbtn').onclick=send;
+document.getElementById('input').addEventListener('keydown',e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
+document.getElementById('input').addEventListener('focus',()=>document.getElementById('cbox').classList.add('focus'));
+document.getElementById('input').addEventListener('blur',()=>document.getElementById('cbox').classList.remove('focus'));
+render();
+</script>
+</body>
+</html>
