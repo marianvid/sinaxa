@@ -36,9 +36,34 @@ Caveats:
 - 75 `#[experimental(...)]` annotations in protocol v2.
 - The stable documented surface is `codex exec` (+ `--json`, `--output-schema`,
   `-o`) and `codex exec resume`; OpenAI points automation at the Codex SDK.
-- `codex mcp-server` is a third path: two tools, `codex` (returns a
-  conversationId) and `codex-reply` — a persistent conversation over a
-  stabler contract. Verified empirically during agent-bridge.
+### codex mcp-server — measured too (tools/probe_codex_mcp.py)
+
+    tools: codex, codex-reply
+    codex args: approval-policy, base-instructions, compact-prompt, config,
+                cwd, developer-instructions, model, prompt, sandbox
+
+    turn 1 (3.8s) -> "ok"      conversationId 01a04fce-f12d-7812-98c7-08aada7bd197
+    turn 2 (1.6s) -> "PELICAN"
+    one process, context intact, nothing resent
+
+|                        | mcp-server            | app-server              |
+|------------------------|-----------------------|-------------------------|
+| contract               | standard MCP          | own protocol, experimental |
+| answer                 | one call, final text  | deltas + turn/completed |
+| "is typing"            | no                    | yes                     |
+| recovery after a death | no resume tool        | thread/resume           |
+| approvals              | `approval-policy` arg | events you must handle  |
+| system prompt          | `base-instructions`   | via config              |
+
+Leaning to mcp-server first:
+- `approval-policy: never` removes the blocked-approval trap for free
+- `model` + `sandbox` + `base-instructions` map one-to-one onto a member
+  definition, no translation
+- it is a standard contract, not an experimental one
+
+What it costs: no streaming, and no cheap recovery — if the process dies the
+conversation is gone and we replay from the room. Which is the safety net by
+design anyway.
 
 ## Consequence for the design
 
