@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>foundry-lab</title>
+<style>
+  :root{--bg:#14161c;--bg2:#1a1d25;--bg3:#20242e;--line:#2c313d;--fg:#e6e9ef;
+        --dim:#8b93a5;--dim2:#646c7e;--accent:#4b8dff;--lead:#e0a53f;--red:#e05f5f;--seat:#7c6cf0}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+  .app{display:grid;grid-template-columns:272px 1fr;height:100vh}
+  .grow{flex:1}
+
+  .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
+  .brand .logo{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+    background:linear-gradient(150deg,var(--accent),var(--seat));font-weight:700;font-size:11px;color:#fff}
+  .brand b{font-size:12.5px}
+  .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+    padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+  .hd u{cursor:pointer;font-size:15px;text-decoration:none}
+  .hd u:hover{color:var(--fg)}
+  .scroll{overflow-y:auto;flex:1}
+  .node{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;
+    cursor:pointer;color:var(--fg);margin:0 6px}
+  .node .t{flex:1;font-weight:600}
+  .caret{width:9px;font-size:9px;color:var(--dim2);transform:rotate(90deg);display:inline-block}
+  .toggle{border:1px solid var(--line);border-radius:6px;color:var(--dim2);font-size:10px;
+    padding:0 6px;line-height:16px;cursor:pointer}
+  .toggle:hover{color:var(--fg);border-color:var(--dim2)}
+  .sessions{margin:1px 0 6px 21px;border-left:1px solid var(--line);padding-left:7px}
+  .sess{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;color:var(--fg);
+    background:rgba(75,141,255,.13);box-shadow:inset 2px 0 0 var(--accent)}
+  .sub{margin:2px 0 8px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .room{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;
+    color:var(--fg);background:var(--bg3)}
+  .room .t{flex:1}
+  .avs{display:flex}
+  .avs i{width:14px;height:14px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg2);font-style:normal}
+  .nav{border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);
+    padding:6px;gap:2px;background:#171a21}
+  .nb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;
+    border-radius:7px;color:var(--dim2);cursor:pointer;font-size:10px}
+  .nb i{font-style:normal;font-size:15px;line-height:1}
+  .nb:hover{background:var(--bg3);color:var(--fg)}
+  .nb.on{background:var(--bg3);color:var(--accent)}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .top{border-bottom:1px solid var(--line);padding:9px 18px;display:flex;align-items:center;gap:9px}
+  .top h1{font-size:14.5px;margin:0;font-weight:600}
+  .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
+    padding:2px 9px;cursor:pointer;background:none;font-family:inherit;white-space:nowrap}
+  .chip:hover{color:var(--fg);border-color:var(--dim2)}
+  .strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
+    gap:7px;background:var(--bg2)}
+  .pers{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+    padding:1px 9px 1px 3px;color:var(--dim)}
+  .pers .sw{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;
+    font-size:8.5px;font-weight:700;color:#fff}
+  .pers.is-lead{border-color:rgba(224,165,63,.5);color:var(--fg)}
+  .star{color:var(--lead);font-size:11px}
+
+  .thread{flex:1;overflow-y:auto;padding:18px 22px}
+  .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:15px}
+  .av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+    font-size:11px;font-weight:700;color:#fff}
+  .who{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap}
+  .who b{font-size:13px}
+  .who .model,.who .cost{font-size:10px;color:var(--dim2);border:1px solid var(--line);
+    border-radius:4px;padding:0 5px}
+  .who .time{font-size:10px;color:var(--dim2)}
+  .who .lb{font-size:9.5px;color:var(--lead);border:1px solid rgba(224,165,63,.4);
+    border-radius:4px;padding:0 5px}
+  .bd{color:#cfd5e0;white-space:pre-wrap;word-wrap:break-word}
+  .bd code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .bd pre{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+    overflow-x:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    white-space:pre;margin:6px 0}
+  .sys{font-size:11px;color:var(--amber,#e0a53f);text-align:center;margin:6px 0 16px}
+  .err{color:var(--red);font-size:12px;text-align:center;margin:6px 0 16px;
+    border:1px solid rgba(224,95,95,.3);background:rgba(224,95,95,.07);border-radius:8px;padding:8px 12px}
+  .think{color:var(--dim2);font-style:italic}
+  .empty{color:var(--dim2);text-align:center;margin-top:70px;line-height:1.9}
+
+  .composer{border-top:1px solid var(--line);padding:11px 16px}
+  .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .cbox:focus-within{border-color:rgba(75,141,255,.5)}
+  textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;
+    outline:none;height:38px;max-height:180px}
+  .ctools{display:flex;align-items:center;gap:8px;margin-top:3px}
+  .send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;
+    font:inherit;cursor:pointer}
+  .send:disabled{opacity:.4;cursor:default}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--bg3);
+    border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:12px;z-index:60}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo">F</span><b>foundry-lab</b></div>
+    <div class="hd">Projects <u title="New project — not in the MVP">+</u></div>
+    <div class="scroll">
+      <div class="node"><span class="caret">▶</span><span class="t" id="pname">foundry-lab</span>
+        <span class="toggle" title="New session — not in the MVP">+</span></div>
+      <div class="sessions">
+        <div class="sess"><span class="t" id="sname">main</span></div>
+        <div class="sub">
+          <div class="room"><span class="t"># Team room</span>
+            <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i></span></div>
+        </div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nb on"><i>▤</i>Projects</div>
+      <div class="nb" onclick="toast('Members — not in the MVP')"><i>◉</i>Members</div>
+      <div class="nb" onclick="toast('Runs — not in the MVP')"><i>⚡</i>Runs</div>
+      <div class="nb" onclick="toast('Settings — not in the MVP')"><i>⚙</i>Settings</div>
+    </nav>
+  </aside>
+
+  <section class="main">
+    <header class="top">
+      <h1># Team room</h1>
+      <div class="grow"></div>
+      <button class="chip" id="cliinfo" title="The CLI session id is only a cache">cli: —</button>
+      <button class="chip" id="clearbtn" title="Start a fresh CLI session. The room keeps its history.">Clear context</button>
+    </header>
+    <div class="strip" id="strip"></div>
+    <div class="thread" id="thread"></div>
+    <div class="composer">
+      <div class="cbox">
+        <textarea id="input" placeholder="Message the room…"></textarea>
+        <div class="ctools"><div class="grow"></div><button class="send" id="sendbtn">Send</button></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+let S = {members:{}, messages:[], cli_session:null};
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmt = s => esc(s)
+  .replace(/```([\s\S]*?)```/g, (m,c)=>'<pre>'+c.replace(/^\n/,'')+'</pre>')
+  .replace(/`([^`\n]+)`/g,'<code>$1</code>');
+const hhmm = ts => { const d=new Date(ts*1000);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+
+function renderStrip(){
+  const st=document.getElementById('strip'); st.innerHTML='';
+  Object.entries(S.members).forEach(([id,m])=>{
+    const b=document.createElement('span');
+    b.className='pers'+(id==='you'?' is-lead':'');
+    b.title = m.kind==='human' ? 'you — lead of this room' : 'claude CLI · one process per message';
+    b.innerHTML=`<span class="sw" style="background:${m.color}">${m.initial}</span>${m.name}`
+      +(id==='you'?' <span class="star">★</span>':'');
+    st.appendChild(b);
+  });
+  document.getElementById('cliinfo').textContent =
+    'cli: ' + (S.cli_session ? S.cli_session.slice(0,8) : 'new');
+}
+
+function renderThread(pending){
+  const th=document.getElementById('thread');
+  if(!S.messages.length && !pending){
+    th.innerHTML='<div class="empty">Nothing here yet.<br>'
+      +'Write something — it goes straight to the Claude CLI on this machine.</div>';
+    return;
+  }
+  th.innerHTML = S.messages.map(m=>{
+    if(m.author==='system') return `<div class="sys">${esc(m.text)}</div>`;
+    const a=S.members[m.author]||{name:m.author,initial:'?',color:'#3b404d',model:''};
+    const meta=m.meta||{};
+    const tags = (a.kind==='agent'
+        ? `<span class="model">${esc(a.model)}</span>`
+          + (meta.elapsed!==undefined?`<span class="cost">${meta.elapsed}s</span>`:'')
+          + (meta.cost!==undefined?`<span class="cost">$${meta.cost}</span>`:'')
+        : `<span class="model">${esc(a.model)}</span>`)
+      + (m.author==='you'?'<span class="lb">★ lead</span>':'');
+    return `<div class="msg"><div class="av" style="background:${a.color}">${a.initial}</div><div>
+      <div class="who"><b>${esc(a.name)}</b>${tags}<span class="time">${hhmm(m.ts)}</span></div>
+      <div class="bd">${fmt(m.text)}</div></div></div>`;
+  }).join('')
+  + (pending?`<div class="msg"><div class="av" style="background:#c96442">A</div><div>
+      <div class="who"><b>Claude</b><span class="model">claude-cli</span></div>
+      <div class="bd think">thinking…</div></div></div>`:'');
+  th.scrollTop = th.scrollHeight;
+}
+
+function showError(t, detail){
+  const th=document.getElementById('thread');
+  const d=document.createElement('div'); d.className='err';
+  d.textContent = t + (detail? ' — '+detail : '');
+  th.appendChild(d); th.scrollTop=th.scrollHeight;
+}
+
+async function refresh(){
+  const r=await fetch('/api/state'); S=await r.json();
+  document.getElementById('pname').textContent=S.project;
+  document.getElementById('sname').textContent=S.session;
+  renderStrip(); renderThread(false);
+}
+
+async function send(){
+  const inp=document.getElementById('input'), btn=document.getElementById('sendbtn');
+  const text=inp.value.trim(); if(!text) return;
+  inp.value=''; btn.disabled=true;
+  S.messages.push({author:'you', text, ts:Date.now()/1000});
+  renderThread(true);
+  try{
+    const r=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text})});
+    const d=await r.json();
+    await refresh();
+    if(d.error) showError(d.error, d.detail);
+  }catch(e){ await refresh(); showError('could not reach the local server', String(e)); }
+  btn.disabled=false; inp.focus();
+}
+
+document.getElementById('sendbtn').onclick=send;
+document.getElementById('input').addEventListener('keydown',e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
+document.getElementById('input').addEventListener('input',e=>{
+  e.target.style.height='38px'; e.target.style.height=Math.min(180,e.target.scrollHeight)+'px'; });
+document.getElementById('clearbtn').onclick=async()=>{
+  await fetch('/api/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await refresh(); toast('CLI context cleared — the room kept its history'); };
+let TT; function toast(t){ clearTimeout(TT);
+  document.querySelectorAll('.toast').forEach(x=>x.remove());
+  const d=document.createElement('div'); d.className='toast'; d.textContent=t;
+  document.body.appendChild(d); TT=setTimeout(()=>d.remove(),2600); }
+
+refresh().then(()=>document.getElementById('input').focus());
+</script>
+</body>
+</html>
