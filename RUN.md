@@ -61,3 +61,14 @@ almost nothing.
   working and shows each member's activity (thinking / working / writing).
 - `claude` is started with read-only tools and codex with
   `approval-policy: never`, `sandbox: read-only`. Nothing writes to disk.
+- **Process leak.** After a smoke run one `claude -p ... --resume` survived
+  the shutdown (600 MB, found with `ps`). `ClaudeSession.stop()` closes stdin
+  and kills after 5s, so something escaped it — most likely a session
+  restarted by the retry path in `ClaudeAgent.ask` after the original died.
+  Until it is fixed, check for strays:
+
+      ps -eo pid,rss,command | grep "allowedTools Read Grep Glob" | grep -v grep
+
+  A leaked process costs no tokens, only memory. Note that the ChatGPT
+  desktop app runs its own `codex app-server --listen stdio://` — that one is
+  not ours, leave it alone.
