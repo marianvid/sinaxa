@@ -34,7 +34,7 @@
   .sessions{margin:1px 0 6px 21px;border-left:1px solid var(--line);padding-left:7px}
   .sess{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;color:var(--fg);
     background:rgba(75,141,255,.13);box-shadow:inset 2px 0 0 var(--accent)}
-  .sub{margin:2px 0 8px 15px;border-left:1px solid var(--line);padding-left:7px}
+  .sess .t{flex:1}
   .room{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;
     color:var(--fg);background:var(--bg3)}
   .room .t{flex:1}
@@ -108,11 +108,8 @@
       <div class="node"><span class="caret">▶</span><span class="t" id="pname">foundry-lab</span>
         <span class="toggle" title="New session — not in the MVP">+</span></div>
       <div class="sessions">
-        <div class="sess"><span class="t" id="sname">main</span></div>
-        <div class="sub">
-          <div class="room"><span class="t"># Team room</span>
-            <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i></span></div>
-        </div>
+        <div class="sess"><span class="t" id="sname">main</span>
+          <span class="avs"><i style="background:#2f6fd0"></i><i style="background:#c96442"></i></span></div>
       </div>
     </div>
     <nav class="nav">
@@ -125,7 +122,7 @@
 
   <section class="main">
     <header class="top">
-      <h1># Team room</h1>
+      <h1 id="rname"># main team room</h1>
       <div class="grow"></div>
       <button class="chip" id="cliinfo" title="The CLI session id is only a cache">cli: —</button>
       <button class="chip" id="clearbtn" title="Start a fresh CLI session. The room keeps its history.">Clear context</button>
@@ -202,6 +199,7 @@ async function refresh(){
   const r=await fetch('/api/state'); S=await r.json();
   document.getElementById('pname').textContent=S.project;
   document.getElementById('sname').textContent=S.session;
+  document.getElementById('rname').textContent='# '+S.session+' '+S.room.toLowerCase();
   renderStrip(); renderThread(false);
 }
 
