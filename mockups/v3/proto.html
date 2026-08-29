@@ -330,8 +330,10 @@ function renderTree(){
     const open = !!UI.open[p.id];
     const d = document.createElement('div'); d.className='proj';
     d.innerHTML = `<div class="node ${open?'o':''}"><span class="caret ${open?'o':''}">▶</span>
-      <span class="t">${p.name}</span><span class="when">${p.sessions.length}</span></div>`;
+      <span class="t">${p.name}</span>
+      <span class="toggle" title="New session in ${p.name}">+</span></div>`;
     d.querySelector('.node').onclick=()=>{UI.open[p.id]=!open; render();};
+    d.querySelector('.toggle').onclick=e=>{e.stopPropagation(); newSession(p);};
     if(open){
       const box=document.createElement('div'); box.className='sessions';
       p.sessions.forEach(s=>{
@@ -348,9 +350,6 @@ function renderTree(){
         if(so) sd.appendChild(roomList(p,s));
         box.appendChild(sd);
       });
-      const ns=document.createElement('div'); ns.className='add'; ns.textContent='+ New session';
-      ns.onclick=e=>{e.stopPropagation(); newSession(p);};
-      box.appendChild(ns);
       d.appendChild(box);
     }
     el.appendChild(d);
