@@ -73,7 +73,31 @@
   .tab .sq{width:8px;height:8px;border-radius:3px;flex:none}
   .tab .badge{background:var(--accent);color:#fff;border-radius:999px;font-size:10px;padding:0 5px;line-height:15px}
 
-  .thread{flex:1;overflow-y:auto;padding:18px 22px}
+  .tabs .plus{margin-left:auto;padding:9px 12px;color:var(--dim2);cursor:pointer}
+  .tabs .plus:hover{color:var(--accent)}
+  .tab .avs{display:flex}
+  .tab .avs i{width:15px;height:15px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg);font-style:normal}
+  .tab .lock{font-size:10px;color:var(--dim2)}
+
+  .roomhdr{padding:10px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+    gap:9px;font-size:11.5px;color:var(--dim2)}
+  .roomhdr b{color:var(--fg);font-size:12.5px;font-weight:600}
+  .roomhdr .sep{color:var(--line)}
+
+  .pop{position:absolute;top:88px;right:18px;width:250px;background:var(--bg2);border:1px solid var(--line);
+    border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.5);padding:10px;z-index:20}
+  .pop h3{margin:0 0 3px;font-size:12.5px}
+  .pop .sub{font-size:11px;color:var(--dim2);margin-bottom:9px}
+  .pop label{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;font-size:12px}
+  .pop label:hover{background:var(--bg3)}
+  .pop input{accent-color:var(--accent)}
+  .pop .rl{font-size:10px;color:var(--dim2);margin-left:auto;text-transform:uppercase;letter-spacing:.05em}
+  .pop .nmi{background:var(--bg3);border:1px solid var(--line);border-radius:6px;color:var(--fg);
+    font:inherit;font-size:12px;padding:5px 8px;width:100%;margin:6px 0 9px;outline:none}
+  .pop .foot{display:flex;gap:6px;justify-content:flex-end}
+  .pop .hint{font-size:10.5px;color:var(--dim2);margin-top:8px;line-height:1.5}
+
+  .thread{flex:1;overflow-y:auto;padding:18px 22px;position:relative}
   .day{text-align:center;font-size:11px;color:var(--dim2);margin:8px 0 18px;position:relative}
   .day::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
   .day b{background:var(--bg);padding:0 10px;position:relative;font-weight:400}
@@ -212,14 +236,32 @@
     </header>
 
     <div class="tabs">
-      <div class="tab active"><span class="sq" style="background:var(--accent)"></span>Team room</div>
-      <div class="tab"><span class="sq" style="background:#c96442"></span>Claude · architect</div>
-      <div class="tab"><span class="sq" style="background:#3fbf7f"></span>Codex · backend <span class="badge">2</span></div>
-      <div class="tab"><span class="sq" style="background:#7c6cf0"></span>Reviewer</div>
-      <div class="tab" style="color:var(--dim2)">Notes</div>
+      <div class="tab active"># Team room <span class="avs"><i style="background:#c96442"></i><i style="background:#3fbf7f"></i><i style="background:#7c6cf0"></i><i style="background:#2f6fd0"></i></span></div>
+      <div class="tab"># schema <span class="avs"><i style="background:#3fbf7f"></i><i style="background:#c96442"></i></span><span class="lock">private</span><span class="badge">2</span></div>
+      <div class="tab"><span class="sq" style="background:#c96442"></span>Claude</div>
+      <div class="tab"><span class="sq" style="background:#3fbf7f"></span>Codex</div>
+      <div class="tab" style="color:var(--dim2)"><span class="sq" style="background:#7c6cf0"></span>Reviewer</div>
+      <div class="plus" title="New room">＋</div>
+    </div>
+
+    <div class="roomhdr">
+      <b># Team room</b><span class="sep">|</span>
+      everyone · 4 seats <span class="sep">·</span> all messages visible to every member
     </div>
 
     <div class="thread">
+      <div class="pop">
+        <h3>New room</h3>
+        <div class="sub">Pick the seats that can see it.</div>
+        <input class="nmi" value="schema" placeholder="room name">
+        <label><input type="checkbox" checked> Claude <span class="rl">architect</span></label>
+        <label><input type="checkbox" checked> Codex <span class="rl">backend</span></label>
+        <label><input type="checkbox" disabled> Reviewer <span class="rl">missing</span></label>
+        <div class="foot"><button class="btn">Cancel</button><button class="btn primary">Create</button></div>
+        <div class="hint">You are always in. Seats outside the room never see it,
+        and it stays out of their context.</div>
+      </div>
+
       <div class="day"><b>Today</b></div>
 
       <div class="msg">
@@ -262,7 +304,7 @@
 
     <div class="composer">
       <div class="cbox">
-        <div class="to">Writing to <b>Team room</b> · 2 of 3 seats live</div>
+        <div class="to">Writing to <b># Team room</b> · 2 of 3 seats live</div>
         <textarea placeholder="Message the team…  @name to address one seat">@Codex draft the schema, @Claude review it before I look.</textarea>
         <div class="ctools">
           <span class="chip">📎</span><span class="chip">⌘ Round-robin</span><span class="chip">Pause all</span>
@@ -311,8 +353,9 @@
     </div>
 
     <div class="note">
-      Seats hold the history. Members are swappable — a replacement inherits the
-      seat, not the predecessor's <code>--resume</code> id.
+      Rooms hold the messages. A seat's context is the projection over the rooms
+      it belongs to — that is what a replacement inherits, not the
+      predecessor's <code>--resume</code> id.
     </div>
   </aside>
 
