@@ -33,10 +33,16 @@ class TurnTimedOut(RuntimeError):
 
 
 class ClaudeSession:
-    def __init__(self, session_id=None, cwd=None, binary="claude"):
+    def __init__(self, session_id=None, cwd=None, binary="claude",
+                 model=None, instructions=None, allowed_tools=None):
         self.session_id = session_id
         self.cwd = cwd or os.getcwd()
         self.binary = binary
+        self.model = model
+        self.instructions = instructions
+        self.allowed_tools = allowed_tools
+        self.activity = ""
+        self.tokens = 0
         self._proc = None
         self._events = queue.Queue()
         self._stderr = []
@@ -65,6 +71,12 @@ class ClaudeSession:
                "--input-format", "stream-json",
                "--output-format", "stream-json",
                "--verbose"]
+        if self.model:
+            cmd += ["--model", self.model]
+        if self.instructions:
+            cmd += ["--append-system-prompt", self.instructions]
+        if self.allowed_tools is not None:
+            cmd += ["--allowedTools", *self.allowed_tools]
         cmd += ["--resume", self.session_id] if resume else ["--session-id", self.session_id]
 
         self._events = queue.Queue()
@@ -172,11 +184,20 @@ class ClaudeSession:
                                   + (self.stderr_tail() or ""))
             if kind == "system" and event.get("session_id"):
                 self.session_id = event["session_id"]
+            if kind == "system":
+                self.activity = "thinking"
             if kind == "assistant":
+                self.activity = "writing" 
                 for block in event.get("message", {}).get("content", []):
                     if block.get("type") == "text" and block.get("text"):
                         chunks.append(block["text"])
             if kind == "result":
+                usage = event.get("usage") or {}
+                total = (usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+                         + usage.get("cache_read_input_tokens", 0))
+                if total:
+                    self.tokens = total
+                self.activity = ""
                 if event.get("session_id"):
                     self.session_id = event["session_id"]
                 self.turns += 1
