@@ -124,8 +124,6 @@
   .composer{border-top:1px solid var(--line);padding:11px 16px}
   .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px}
   .cbox.focus{border-color:rgba(75,141,255,.5)}
-  .cbox .to{font-size:11px;color:var(--dim2);margin-bottom:5px}
-  .cbox .to b{color:var(--dim)}
   .cbox textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;outline:none;height:36px}
   .ctools{display:flex;align-items:center;gap:8px;margin-top:3px}
   .send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;
@@ -136,8 +134,6 @@
   .app.closed{grid-template-columns:272px 1fr}
   .app.closed .insp{display:none}
   .chip.on{background:var(--bg3);color:var(--fg);border-color:var(--dim2)}
-  .pol{color:var(--dim);border-bottom:1px dotted var(--dim2);cursor:pointer}
-  .pol:hover{color:var(--fg)}
   .icard{padding:0 14px 14px;overflow-y:auto}
   .ihead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .ihead .av{width:34px;height:34px}
@@ -203,7 +199,6 @@
     <div class="thread" id="thread"></div>
     <div class="composer">
       <div class="cbox" id="cbox">
-        <div class="to" id="cto"></div>
         <textarea id="input" placeholder="Message the room…   @name to address one member"></textarea>
         <div class="ctools">
           <button class="chip" onclick="toast('Attachment — not in this prototype')">📎</button>
@@ -414,11 +409,6 @@ function renderMain(){
     strip.appendChild(b);
   });
 
-  const live=agentsIn(r).length, tot=roomMembers(r).filter(m=>m.kind==='agent').length;
-  document.getElementById('cto').innerHTML =
-    `<span class="pol" id="polbtn" title="${POLICY_HINT[r.policy]}">${POLICY[r.policy]}</span>`
-    + ` · ${live} of ${tot} agents live`;
-  document.getElementById('polbtn').onclick=pickPolicy;
   document.getElementById('pausebtn').textContent = r.paused? 'Resume room':'Pause room';
   document.getElementById('pausebtn').onclick=()=>{r.paused=!r.paused;
     toast(r.paused?'Room paused — agents will not answer':'Room resumed'); render();};
