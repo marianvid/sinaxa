@@ -12,7 +12,11 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
     font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
-  .app{display:grid;grid-template-columns:262px 1fr;height:100vh}
+  .app{display:grid;grid-template-columns:262px 1fr;grid-template-rows:minmax(0,1fr) auto;
+    height:100vh;min-height:0}
+  /* Without min-height:0 a grid/flex child grows past its track instead of
+     scrolling, which pushes the composer off screen. */
+  .side,.main{min-height:0;overflow:hidden}
   .grow{flex:1}
 
   .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
@@ -64,7 +68,15 @@
   .star{color:var(--lead);font-size:11px}
   .act{font-size:10px;color:var(--accent)}
 
-  .thread{flex:1;overflow-y:auto;padding:18px 22px}
+  .thread{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:18px 22px}
+  .composer{flex:none}
+  /* macOS hides overlay scrollbars until you scroll; make them permanent so
+     there is always a visual cue that there is more above. */
+  .thread::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:10px}
+  .thread::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{
+    background:#333a48;border-radius:6px;border:3px solid transparent;background-clip:content-box}
+  .thread::-webkit-scrollbar-thumb:hover,.scroll::-webkit-scrollbar-thumb:hover{background:#454d5e}
+  .thread::-webkit-scrollbar-track,.scroll::-webkit-scrollbar-track{background:transparent}
   .msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:15px}
   .av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
     font-size:11px;font-weight:700;color:#fff}
@@ -81,12 +93,16 @@
     overflow-x:auto;font-size:12px;white-space:pre;margin:6px 0;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .mention{color:var(--accent);background:rgba(75,141,255,.12);border-radius:4px;padding:0 3px}
-  .sys{font-size:11px;color:var(--dim2);text-align:center;margin:6px 0 14px}
+  /* A centred grey line with nothing beside it reads as a hole in the
+     transcript. Give it a rule so it reads as a deliberate separator. */
+  .sys{font-size:10.5px;color:var(--dim2);text-align:center;margin:10px 0;position:relative}
+  .sys::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+  .sys span{position:relative;background:var(--bg);padding:0 10px}
   .err{color:var(--red);font-size:12px;text-align:center;margin:6px 0 14px;
     border:1px solid rgba(224,95,95,.3);background:rgba(224,95,95,.07);border-radius:8px;padding:8px 12px}
   .empty{color:var(--dim2);text-align:center;margin-top:70px;line-height:1.9}
 
-  .composer{border-top:1px solid var(--line);padding:11px 16px}
+  .composer{border-top:1px solid var(--line);padding:11px 16px;flex:none}
   .cbox{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
   .cbox:focus-within{border-color:rgba(75,141,255,.5)}
   textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;
@@ -106,7 +122,7 @@
 </style>
 </head>
 <body>
-<div class="app" style="grid-template-rows:1fr auto">
+<div class="app">
   <aside class="side">
     <div class="brand"><span class="logo">F</span><b>foundry-lab</b></div>
     <div class="hd">Projects</div>
@@ -196,7 +212,9 @@ function renderThread(){
   }
   th.innerHTML=r.messages.map(m=>{
     if(m.author==='system')
-      return `<div class="${m.kind==='error'?'err':'sys'}">${esc(m.text)}</div>`;
+      return m.kind==='error'
+        ? `<div class="err">${esc(m.text)}</div>`
+        : `<div class="sys"><span>${esc(m.text)}</span></div>`;
     const a=S.members[m.author]||{name:m.author,initial:'?',color:'#3b404d',model:''};
     const meta=m.meta||{};
     const tags=`<span class="tag">${esc(a.model)}</span>`
