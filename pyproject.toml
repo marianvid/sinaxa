@@ -1,5 +1,5 @@
 [project]
-name = "foundry-lab"
+name = "kenbet"
 version = "0.0.1"
 description = "A team room where every member is an AI agent."
 requires-python = ">=3.11"

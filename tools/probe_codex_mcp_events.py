@@ -69,7 +69,7 @@ threading.Thread(target=pump, args=(proc.stdout,), daemon=True).start()
 
 send(proc, {"id": 1, "method": "initialize", "params": {
     "protocolVersion": "2025-06-18", "capabilities": {},
-    "clientInfo": {"name": "foundry-lab", "version": "0.0.1"}}})
+    "clientInfo": {"name": "kenbet", "version": "0.0.1"}}})
 while True:
     _, ev = events.get(timeout=30)
     if ev.get("id") == 1:

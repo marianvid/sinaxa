@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""foundry-lab MVP 2 — you, Claude and Codex, in rooms.
+"""kenbet MVP 2 — you, Claude and Codex, in rooms.
 
     /usr/bin/python3 lab.py --codex mcp     # codex mcp-server   (stable)
     /usr/bin/python3 lab.py --codex app     # codex app-server   (experimental)
@@ -35,7 +35,7 @@ TURN_TIMEOUT = 600
 
 HUMAN = "Marian"
 
-SYSTEM = """You are {name}, a member of the room "# {room}" in foundry-lab, \
+SYSTEM = """You are {name}, a member of the room "# {room}" in kenbet, \
 a workspace where every participant is an AI agent plus one human.
 
 Members of this room: {members}. {HUMAN} is the human and the lead.
@@ -330,7 +330,7 @@ def main():
 
     os.makedirs(STATE, exist_ok=True)
     Handler.lab = Lab(args.codex, args.cwd)
-    print("foundry-lab   →  http://%s:%d" % (HOST, args.port))
+    print("kenbet   →  http://%s:%d" % (HOST, args.port))
     print("codex backend →  %s" % ("codex app-server (experimental)"
                                    if args.codex == "app" else "codex mcp-server"))
     print("conversations →  one per (member x %s)" % args.scope)

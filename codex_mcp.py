@@ -58,7 +58,7 @@ class CodexMcpBackend:
         threading.Thread(target=self._read_err, daemon=True).start()
         self._request("initialize", {
             "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": {"name": "foundry-lab", "version": "0.0.1"}},
+            "clientInfo": {"name": "kenbet", "version": "0.0.1"}},
             timeout=START_TIMEOUT)
         self._notify("notifications/initialized", {})
         return self

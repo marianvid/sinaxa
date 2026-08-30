@@ -1,10 +1,10 @@
-# Running foundry-lab
+# Running kenbet
 
 Use `/usr/bin/python3`, never the anaconda one.
 
 ## MVP 2 — you, Claude and Codex, in rooms
 
-    cd /Volumes/Marian_Backup/work/foundry-lab
+    cd /Volumes/Marian_Backup/work/kenbet
     /usr/bin/python3 lab.py --codex mcp     # codex mcp-server   (stable contract)
     /usr/bin/python3 lab.py --codex app     # codex app-server   (experimental)
 

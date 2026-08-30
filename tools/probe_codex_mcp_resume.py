@@ -64,7 +64,7 @@ print("spawned pid", proc.pid)
 
 send(proc, {"id": 1, "method": "initialize", "params": {
     "protocolVersion": "2025-06-18", "capabilities": {},
-    "clientInfo": {"name": "foundry-lab", "version": "0.0.1"}}})
+    "clientInfo": {"name": "kenbet", "version": "0.0.1"}}})
 wait_id(1, 30)
 send(proc, {"method": "notifications/initialized"})
 

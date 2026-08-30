@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""foundry-lab MVP.
+"""kenbet MVP.
 
 One project, one session, one room, two members: you and Claude CLI.
 No daemon, no database, no dependencies. Run it and open the browser:
@@ -130,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
         if self.path == "/api/state":
             return self._send(200, {
-                "project": "foundry-lab",
+                "project": "kenbet",
                 "session": "main",
                 "room": "Team room",
                 "members": MEMBERS,
@@ -177,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.makedirs(STATE, exist_ok=True)
-    print("foundry-lab  →  http://%s:%d" % (HOST, PORT))
+    print("kenbet  →  http://%s:%d" % (HOST, PORT))
     print("messages     →  %s" % LOG)
     print("cli session  →  %s" % (session_id() or "(new on first message)"))
     try:

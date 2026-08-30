@@ -99,7 +99,7 @@ def main():
     print("1. spawned, pid %d (%.1fs)" % (proc.pid, time.time() - t0))
 
     send(proc, {"id": 1, "method": "initialize", "params": {
-        "clientInfo": {"name": "foundry-lab", "title": "foundry-lab probe", "version": "0.0.1"},
+        "clientInfo": {"name": "kenbet", "title": "kenbet probe", "version": "0.0.1"},
         "capabilities": {"experimentalApi": True}}})
     r = wait_for(lambda e: e.get("id") == 1, "initialize response", 30)
     print("2. initialize ok:", json.dumps(r.get("result", {}))[:200])

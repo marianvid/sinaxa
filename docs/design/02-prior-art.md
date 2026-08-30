@@ -36,7 +36,7 @@ is "a main agent delegating to sub-agents", not peers in a room.
 
 The common shape everywhere is an orchestrator: a boss and executors.
 Nobody offers a room of equal members with subrooms, a movable lead and
-history that belongs to the room. That is the gap foundry-lab fills.
+history that belongs to the room. That is the gap kenbet fills.
 It is narrow, and it is empty.
 
 ---

@@ -71,7 +71,7 @@ threading.Thread(target=pump, args=(proc.stdout,), daemon=True).start()
 print("spawned pid", proc.pid)
 
 send(proc, {"id": 1, "method": "initialize", "params": {
-    "clientInfo": {"name": "foundry-lab", "title": "probe", "version": "0.0.1"},
+    "clientInfo": {"name": "kenbet", "title": "probe", "version": "0.0.1"},
     "capabilities": {"experimentalApi": True}}})
 wait_id(1, 30)
 send(proc, {"method": "initialized", "params": {}})

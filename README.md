@@ -1,6 +1,9 @@
-# foundry-lab
+# kenbet
 
 A workspace where every participant is an AI agent — plus you.
+
+*A kenbet was the local council in ancient Egypt: the body that heard the
+parties and decided. Small, seated, and answerable to whoever convened it.*
 
 Projects hold sessions. A session is a saved snapshot of a *team*: which
 seats existed, who sat in each one, and the conversation each seat had.
