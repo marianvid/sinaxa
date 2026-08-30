@@ -1,0 +1,253 @@
+/* foundry-lab — all styling lives here.
+   Themes are two sets of the same variables; nothing below :root should
+   hardcode a colour. Adding a light theme means filling in the second block
+   and setting data-theme="light" on <html>. */
+
+:root,
+:root[data-theme="dark"]{
+  --bg:#14161c;      /* page */
+  --bg2:#1a1d25;     /* panels: sidebar, composer, strip */
+  --bg3:#20242e;     /* raised: hover, inputs, chips */
+  --bg4:#101319;     /* recessed: status bar, nav */
+  --line:#2c313d;
+  --fg:#e6e9ef;
+  --fg2:#cfd5e0;     /* message body */
+  --dim:#8b93a5;
+  --dim2:#646c7e;
+  --accent:#4b8dff;
+  --lead:#e0a53f;
+  --red:#e05f5f;
+  --green:#3fbf7f;
+  --seat:#7c6cf0;
+  --scrollbar:#333a48;
+  --scrollbar-hover:#454d5e;
+  --shadow:0 18px 50px rgba(0,0,0,.55);
+  --radius:8px;
+}
+
+:root[data-theme="light"]{
+  --bg:#ffffff;
+  --bg2:#f6f7f9;
+  --bg3:#eceef2;
+  --bg4:#f0f2f5;
+  --line:#dfe3ea;
+  --fg:#1b1f28;
+  --fg2:#2f3542;
+  --dim:#5c6575;
+  --dim2:#8b93a5;
+  --accent:#2f6fd0;
+  --lead:#b57d17;
+  --red:#c94a4a;
+  --green:#2f9c68;
+  --seat:#6152d6;
+  --scrollbar:#c7ccd6;
+  --scrollbar-hover:#aab1bf;
+  --shadow:0 18px 50px rgba(20,25,35,.18);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+
+.app{display:grid;grid-template-columns:262px 1fr;grid-template-rows:minmax(0,1fr) auto;
+  height:100vh;min-height:0}
+/* Without min-height:0 a grid/flex child grows past its track instead of
+   scrolling, which pushes the composer off screen. */
+.side,.main{min-height:0;overflow:hidden}
+.grow{flex:1}
+
+/* ---------------------------------------------------------------- scrollbars
+   macOS hides overlay scrollbars until you scroll; make them permanent so
+   there is always a cue that more content exists above. */
+.thread::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:10px}
+.thread::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{
+  background:var(--scrollbar);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+.thread::-webkit-scrollbar-thumb:hover,.scroll::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-hover)}
+.thread::-webkit-scrollbar-track,.scroll::-webkit-scrollbar-track{background:transparent}
+
+/* ---------------------------------------------------------------- sidebar */
+.side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
+.brand .logo{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+  background:linear-gradient(150deg,var(--accent),var(--seat));font-weight:700;font-size:11px;color:#fff}
+.brand b{font-size:12.5px}
+.hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
+  padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+.hd u{cursor:pointer;font-size:15px;text-decoration:none}
+.hd u:hover{color:var(--fg)}
+.scroll{overflow-y:auto;flex:1;padding-bottom:10px}
+
+.node{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;
+  color:var(--fg);margin:0 6px;cursor:pointer}
+.node .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toggle{border:1px solid var(--line);border-radius:6px;color:var(--dim2);font-size:10px;
+  padding:0 6px;line-height:16px;cursor:pointer}
+.toggle:hover{color:var(--fg);border-color:var(--dim2)}
+
+.sessions{margin:1px 0 6px 21px;border-left:1px solid var(--line);padding-left:7px}
+
+/* the session row: the arrow expands, the label selects */
+.sess{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;
+  color:var(--dim);cursor:pointer}
+.sess:hover{background:var(--bg3);color:var(--fg)}
+.sess.on{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--fg);
+  box-shadow:inset 2px 0 0 var(--accent)}
+.sess .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arrow{width:14px;height:14px;flex:none;display:grid;place-items:center;border-radius:4px;
+  color:var(--dim2);font-size:9px;line-height:1;cursor:pointer;transition:transform .12s}
+.arrow:hover{background:var(--bg3);color:var(--fg)}
+.arrow.open{transform:rotate(90deg)}
+
+.sub{margin:2px 0 8px 15px;border-left:1px solid var(--line);padding-left:7px}
+.grp{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);
+  padding:8px 8px 3px}
+.room{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;
+  color:var(--dim);cursor:pointer}
+.room:hover{background:var(--bg3);color:var(--fg)}
+.room.on{background:var(--bg3);color:var(--fg)}
+.room .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* a seat in the sidebar: role on the left, occupant on the right */
+.seat{display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:6px;color:var(--dim)}
+.seat .role{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat .who{font-size:11px;color:var(--dim2);display:flex;align-items:center;gap:5px}
+.seat .sw{width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
+  font-size:8px;font-weight:700;color:#fff;flex:none}
+.seat.free .role{color:var(--dim2);font-style:italic}
+.seat.free .who{color:var(--red)}
+
+.avs{display:flex}
+.avs i{width:14px;height:14px;border-radius:4px;margin-left:-4px;border:1.5px solid var(--bg2);
+  font-style:normal}
+.spin{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--accent);
+  border-top-color:transparent;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.nav{border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);
+  padding:6px;gap:2px;background:var(--bg4)}
+.nb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;
+  border-radius:7px;color:var(--dim2);cursor:pointer;font-size:10px}
+.nb i{font-style:normal;font-size:15px;line-height:1}
+.nb:hover{background:var(--bg3);color:var(--fg)}
+.nb.on{background:var(--bg3);color:var(--accent)}
+
+/* ---------------------------------------------------------------- main */
+.main{display:flex;flex-direction:column;min-width:0}
+.top{border-bottom:1px solid var(--line);padding:10px 18px;display:flex;align-items:center;gap:9px}
+/* Discreet: the project is a quiet prefix, the session carries the weight. */
+.title{display:flex;align-items:baseline;gap:7px;min-width:0}
+.title .proj{font-size:11.5px;color:var(--dim2);letter-spacing:.02em}
+.title .dot{color:var(--line);font-size:11px}
+.title .sess{font-size:14px;font-weight:600;color:var(--fg);letter-spacing:.01em;
+  background:none;padding:0;cursor:default}
+.title .sub{font-size:11px;color:var(--dim2);margin:0;border:0;padding:0}
+
+.chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
+  padding:2px 9px;cursor:pointer;background:none;font-family:inherit;white-space:nowrap}
+.chip:hover{color:var(--fg);border-color:var(--dim2)}
+
+/* the seat strip under the header */
+.strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
+  gap:7px;background:var(--bg2);flex-wrap:wrap}
+.pers{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;
+  padding:1px 10px 1px 3px;color:var(--dim);cursor:default}
+.pers .sw{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;
+  font-size:8.5px;font-weight:700;color:#fff}
+.pers .role{font-size:10px;color:var(--dim2);text-transform:uppercase;letter-spacing:.04em}
+.pers.is-lead{border-color:color-mix(in srgb,var(--lead) 50%,transparent);color:var(--fg)}
+.pers.busy{border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:var(--fg)}
+.pers.free{border-style:dashed;color:var(--dim2)}
+.pers.free .sw{background:var(--bg3)!important;color:var(--dim2)}
+.star{color:var(--lead);font-size:11px}
+.act{font-size:10px;color:var(--accent)}
+
+/* ---------------------------------------------------------------- thread */
+.thread{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:18px 22px}
+.msg{display:grid;grid-template-columns:32px 1fr;gap:11px;margin-bottom:15px}
+.av{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:#fff}
+.who{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap}
+.who b{font-size:13px}
+.who .tag{font-size:10px;color:var(--dim2);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.who .time{font-size:10px;color:var(--dim2)}
+.who .lb{font-size:9.5px;color:var(--lead);border:1px solid color-mix(in srgb,var(--lead) 40%,transparent);
+  border-radius:4px;padding:0 5px}
+.bd{color:var(--fg2);white-space:pre-wrap;word-wrap:break-word}
+.bd code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.bd pre{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  overflow-x:auto;font-size:12px;white-space:pre;margin:6px 0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mention{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);
+  border-radius:4px;padding:0 3px}
+
+/* A centred grey line with nothing beside it reads as a hole in the
+   transcript. Give it a rule so it reads as a deliberate separator. */
+.sys{font-size:10.5px;color:var(--dim2);text-align:center;margin:10px 0;position:relative}
+.sys::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+.sys span{position:relative;background:var(--bg);padding:0 10px}
+.err{color:var(--red);font-size:12px;text-align:center;margin:6px 0 14px;
+  border:1px solid color-mix(in srgb,var(--red) 30%,transparent);
+  background:color-mix(in srgb,var(--red) 7%,transparent);border-radius:8px;padding:8px 12px}
+.empty{color:var(--dim2);text-align:center;margin-top:70px;line-height:1.9}
+
+/* ---------------------------------------------------------------- composer */
+.composer{border-top:1px solid var(--line);padding:11px 16px;flex:none}
+.cbox{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px}
+.cbox:focus-within{border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:inherit;
+  outline:none;height:38px;max-height:180px}
+.ctools{display:flex;align-items:center;gap:8px;margin-top:3px}
+.send{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:5px 14px;
+  font:inherit;cursor:pointer}
+.send:disabled{opacity:.4;cursor:default}
+
+/* ---------------------------------------------------------------- status bar */
+.statusbar{grid-column:1/-1;border-top:1px solid var(--line);background:var(--bg4);
+  padding:5px 14px;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--dim2)}
+.statusbar b{color:var(--dim);font-weight:600}
+.statusbar .sep{color:var(--line)}
+.statusbar .warn{color:var(--lead)}
+
+/* ---------------------------------------------------------------- menus */
+.ctx{position:fixed;z-index:80;background:var(--bg2);border:1px solid var(--line);
+  border-radius:9px;padding:4px;min-width:186px;box-shadow:var(--shadow)}
+.ctx .hdr{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);
+  padding:6px 9px 4px}
+.ctx button{display:flex;align-items:center;gap:9px;width:100%;background:none;border:0;
+  color:var(--fg);font:inherit;font-size:12.5px;text-align:left;padding:6px 9px;
+  border-radius:6px;cursor:pointer}
+.ctx button:hover{background:var(--bg3)}
+.ctx button i{font-style:normal;color:var(--dim2);width:14px;text-align:center}
+.ctx .rule{height:1px;background:var(--line);margin:4px 6px}
+
+/* ---------------------------------------------------------------- dialogs */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:90}
+.modal{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;
+  width:400px;max-width:92vw;box-shadow:var(--shadow)}
+.modal h3{margin:0 0 4px;font-size:14.5px}
+.modal .lead{font-size:12.5px;color:var(--dim);margin-bottom:14px;line-height:1.55}
+.modal .note{font-size:11px;color:var(--dim2);margin-top:12px;line-height:1.55;
+  border-top:1px solid var(--line);padding-top:10px}
+.modal .foot{display:flex;gap:7px;justify-content:flex-end;margin-top:14px}
+.btn{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--bg3);color:var(--fg);
+  border-radius:7px;padding:5px 12px;cursor:pointer}
+.btn:hover{border-color:var(--dim2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)}
+
+.seatlist{display:flex;flex-direction:column;gap:6px}
+.seatrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);
+  border-radius:8px;background:var(--bg3)}
+.seatrow .role{flex:0 0 108px;font-size:12px;font-weight:600}
+.seatrow select{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:6px;
+  color:var(--fg);font:inherit;font-size:12px;padding:4px 7px;outline:none}
+.seatrow .star{flex:none}
+.pending{font-size:11px;color:var(--lead);background:color-mix(in srgb,var(--lead) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--lead) 28%,transparent);border-radius:7px;
+  padding:8px 10px;line-height:1.5}
+
+.toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:var(--bg3);
+  border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:12px;z-index:95;
+  box-shadow:var(--shadow)}

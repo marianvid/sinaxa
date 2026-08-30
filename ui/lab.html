@@ -140,7 +140,6 @@
     <header class="top">
       <h1 id="rname"># team</h1>
       <div class="grow"></div>
-      <button class="chip turn" id="polbtn">broadcast</button>
       <button class="chip" id="clearbtn">Clear context…</button>
     </header>
     <div class="strip" id="strip"></div>
@@ -158,7 +157,6 @@
 
 <script>
 let S = null, ROOM = 'team', POLL = null;
-const POLICIES = ['broadcast','mention','round_robin','lead'];
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const fmt = s => esc(s)
   .replace(/```([\s\S]*?)```/g,(m,c)=>'<pre>'+c.replace(/^\n/,'')+'</pre>')
@@ -207,7 +205,7 @@ function renderThread(){
   const at=th.scrollTop+th.clientHeight>=th.scrollHeight-40;
   if(!r.messages.length){
     th.innerHTML='<div class="empty">Empty room.<br>'
-      +'Turn-taking is <b>'+r.policy+'</b>. Write something.</div>';
+      +'Write something — @Claude or @Codex for one of them, nothing for both.</div>';
     return;
   }
   th.innerHTML=r.messages.map(m=>{
@@ -250,7 +248,6 @@ function renderStatus(){
 function render(){
   const r=room();
   document.getElementById('rname').textContent = r.key==='team'?'# team':'↳ '+r.name;
-  document.getElementById('polbtn').textContent = r.policy;
   document.getElementById('sendbtn').disabled = r.busy;
   renderRooms(); renderStrip(); renderThread(); renderStatus();
 }
@@ -282,9 +279,6 @@ document.getElementById('input').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
 document.getElementById('input').addEventListener('input',e=>{
   e.target.style.height='38px'; e.target.style.height=Math.min(180,e.target.scrollHeight)+'px';});
-document.getElementById('polbtn').onclick=async()=>{
-  const r=room(), next=POLICIES[(POLICIES.indexOf(r.policy)+1)%POLICIES.length];
-  await post('/api/policy',{room:ROOM,policy:next}); refresh(); };
 document.getElementById('clearbtn').onclick=async()=>{
   const r=room();
   const agents=r.members.filter(m=>S.members[m].kind==='agent');

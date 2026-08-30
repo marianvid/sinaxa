@@ -89,3 +89,61 @@ tmux, screen scraping, the status machine, the delivery watchdog. With
 `-p --input-format stream-json` a message is one line on stdin and the answer
 is a `result` event. The whole of their inbox-delivery.md collapses into
 `stdin.write()`.
+
+---
+
+## turma — turma.sh, github.com/turma-dev/turma (MIT, Apr–Jul 2026)
+
+Found while checking whether the name was free. It is not: `turma` on PyPI is
+"Provider-pool-aware multi-agent coding orchestration", built on LangGraph,
+with `claude-code`, `codex` and `opencode` worker backends — the same three
+CLIs we use.
+
+Different product, though. Theirs is a pipeline:
+
+    turma plan          author/critic loop with a human approval gate
+    turma plan-to-beads turn the approved plan into tasks
+    turma run           swarm, one PR per task
+    turma status        Beads + PR + worktree state
+
+plan -> tasks -> PRs. Ours is room -> members -> conversation. They automate
+the work; we build the place where it is discussed.
+
+### Worth taking
+
+**1. Completion by sentinel file, not by reading text.** The worker writes
+`.task_complete` or `.task_failed` into its worktree; their docstring says
+outright that the orchestrator "does not parse the worker's stdout for
+success/failure". Compare CAO, which regex-scrapes a terminal. This is
+model-agnostic and survives CLI version changes. It matters for us the moment
+an agent *does* something rather than only talking.
+
+**2. Provider pools with a concurrency cap.** A pool binds a backend to a set
+of task types and a cap; the scheduler picks a task whose pool has a free slot
+instead of blocking on the head of the queue, so a rate-limited provider never
+stalls work another provider could take. We need this as soon as a message
+with no @ wakes every agent at once.
+
+**3. A git worktree per task.** Isolation for when agents write. Not needed
+while everything is read-only, but the right shape later.
+
+### What it does NOT offer
+
+Nothing on the question we spent a day measuring. Their workers are one-shot:
+
+    claude -p <prompt> --dangerously-skip-permissions
+    codex exec <prompt> --cd <worktree> --sandbox workspace-write
+
+One `subprocess.run` per task. No `--resume`, no session id, no persistent
+process. Every task is a fresh agent with no memory — which is fine when a
+task is atomic, and useless for a conversation. They side-stepped the problem
+rather than solving it.
+
+Their concurrency machinery (a global mutation lock, per-pool semaphores,
+draining in-flight workers on halt) exists to serialise parallel git writes.
+Not our problem.
+
+### Intel worth keeping
+
+They deferred a Gemini backend because Google is retiring the `gemini` CLI in
+favour of an Antigravity CLI, and it is not a drop-in replacement.

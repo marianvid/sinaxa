@@ -12,8 +12,8 @@ Rooms:
     # claude      you + Claude
     # codex       you + Codex
 
-Turn-taking per room: broadcast | mention | round-robin | lead.
-Agents address each other by writing @Name; the server delivers it, up to
+Who answers: name someone with @ and only they answer; name nobody and every
+agent in the room answers. Agents address each other the same way, up to
 MAX_HOPS times per message you send, so a politeness loop cannot run away.
 """
 
@@ -50,13 +50,19 @@ repeatedly. You are talking to colleagues, not writing documentation."""
 
 # ------------------------------------------------------------------ model
 class Room:
-    def __init__(self, key, name, members, policy="broadcast"):
+    """A room behaves like a Teams channel.
+
+    Everything written here is visible to every member. If you name someone
+    with @, only they answer. If you name nobody, every agent answers —
+    order does not matter, except that the lead's message comes first, which
+    it does anyway because the lead is the one writing.
+    """
+
+    def __init__(self, key, name, members):
         self.key = key
         self.name = name
-        self.members = members          # member keys, human first
-        self.policy = policy
+        self.members = members          # member keys, lead first
         self.messages = []
-        self.rr = 0
         self.busy = False
 
 
@@ -77,9 +83,9 @@ class Lab:
                        "color": "#3fbf7f", "model": "codex-cli"},
         }
         self.rooms = {
-            "team":   Room("team", "team", ["you", "claude", "codex"], "broadcast"),
-            "claude": Room("claude", "claude", ["you", "claude"], "mention"),
-            "codex":  Room("codex", "codex", ["you", "codex"], "mention"),
+            "team":   Room("team", "team", ["you", "claude", "codex"]),
+            "claude": Room("claude", "claude", ["you", "claude"]),
+            "codex":  Room("codex", "codex", ["you", "codex"]),
         }
         self.by_name = {m["name"].lower(): k for k, m in self.members.items()}
         self._load()
@@ -149,20 +155,11 @@ class Lab:
         return out
 
     def speakers_for(self, room, text, author):
+        """Named with @ -> only them. Nobody named -> everyone."""
         agents = [m for m in room.members
                   if self.members[m]["kind"] == "agent" and m != author]
         named = self.mentioned(text, room, exclude=(author,))
-        if room.policy == "broadcast":
-            return agents
-        if room.policy == "mention":
-            return named
-        if room.policy == "round_robin":
-            if not agents:
-                return []
-            pick = agents[room.rr % len(agents)]
-            room.rr += 1
-            return [pick]
-        return named            # "lead": you are the lead, so you nominate
+        return named or agents
 
     def run_turn(self, room, author, text, hops, targets=None):
         """Ask everyone who should answer, then follow their @mentions.
@@ -174,9 +171,6 @@ class Lab:
         """
         speakers = targets if targets is not None else self.speakers_for(room, text, author)
         if not speakers:
-            if author == "you" and room.policy in ("mention", "lead"):
-                self.append(room, "system", "nobody was named — no agent was woken",
-                            kind="system")
             return
 
         prefix = "[%s] " % self.members[author]["name"]
@@ -280,8 +274,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "members": lab.members,
                 "rooms": [{"key": r.key, "name": r.name, "members": r.members,
-                           "policy": r.policy, "busy": r.busy,
-                           "messages": r.messages} for r in lab.rooms.values()],
+                           "busy": r.busy, "messages": r.messages}
+                          for r in lab.rooms.values()],
                 "status": lab.status(),
             })
         return self._send(404, {"error": "not found"})
@@ -302,15 +296,6 @@ class Handler(BaseHTTPRequestHandler):
             if room.busy:
                 return self._send(409, {"error": "that room is still working"})
             threading.Thread(target=lab.send, args=(room, text), daemon=True).start()
-            return self._send(200, {"ok": True})
-
-        if self.path == "/api/policy":
-            room = lab.rooms.get(body.get("room") or "")
-            policy = body.get("policy")
-            if not room or policy not in ("broadcast", "mention", "round_robin", "lead"):
-                return self._send(400, {"error": "bad room or policy"})
-            room.policy = policy
-            lab.append(room, "system", "turn-taking set to %s" % policy, kind="system")
             return self._send(200, {"ok": True})
 
         if self.path == "/api/reset":
