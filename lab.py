@@ -8,9 +8,9 @@ Same code either way; only the Codex adapter changes, so the two runs are
 comparable. Each backend keeps its own transcript under state/.
 
 Rooms:
-    # team        you + Claude + Codex
-    # claude      you + Claude
-    # codex       you + Codex
+    main        you + Claude + Codex
+    claude      you + Claude
+    codex       you + Codex
 
 Who answers: name someone with @ and only they answer; name nobody and every
 agent in the room answers. Agents address each other the same way, up to
@@ -82,8 +82,17 @@ class Lab:
             "codex":  {"name": "Codex", "kind": "agent", "initial": "C",
                        "color": "#3fbf7f", "model": "codex-cli"},
         }
+        # Seats belong to the session, not to a room. A seat is a role; an
+        # occupant fills it, or it stays empty. The lead seat is present in
+        # main and in every subroom.
+        self.seats = [
+            {"id": "cto",       "role": "cto",       "occupant": "you",    "lead": True},
+            {"id": "architect", "role": "architect", "occupant": "claude", "lead": False},
+            {"id": "backend",   "role": "backend",   "occupant": "codex",  "lead": False},
+            {"id": "reviewer",  "role": "reviewer",  "occupant": None,     "lead": False},
+        ]
         self.rooms = {
-            "team":   Room("team", "team", ["you", "claude", "codex"]),
+            "main":   Room("main", "main", ["you", "claude", "codex"]),
             "claude": Room("claude", "claude", ["you", "claude"]),
             "codex":  Room("codex", "codex", ["you", "codex"]),
         }
@@ -142,6 +151,14 @@ class Lab:
             agent = self.codex_backend.agent("codex", instructions=prompt)
         self.agents[key] = agent
         return agent
+
+    def seats_of(self, room):
+        """Main shows every seat, empty ones included — it is the team.
+        A subroom shows the seats whose occupant is in it, plus the lead."""
+        if room.key == "main":
+            return self.seats
+        return [s for s in self.seats
+                if s["lead"] or (s["occupant"] and s["occupant"] in room.members)]
 
     # ------------------------------------------------------- turn-taking
     def mentioned(self, text, room, exclude=()):
@@ -269,12 +286,17 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             with open(UI, "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if self.path == "/kenbet.css":
+            with open(os.path.join(ROOT, "ui", "kenbet.css"), "rb") as fh:
+                return self._send(200, fh.read(), "text/css; charset=utf-8")
         if self.path.startswith("/api/state"):
             lab = self.lab
             return self._send(200, {
                 "members": lab.members,
+                "seats": lab.seats,
                 "rooms": [{"key": r.key, "name": r.name, "members": r.members,
-                           "busy": r.busy, "messages": r.messages}
+                           "busy": r.busy, "messages": r.messages,
+                           "seats": [s["id"] for s in lab.seats_of(r)]}
                           for r in lab.rooms.values()],
                 "status": lab.status(),
             })
@@ -289,7 +311,7 @@ class Handler(BaseHTTPRequestHandler):
         lab = self.lab
 
         if self.path == "/api/send":
-            room = lab.rooms.get(body.get("room") or "team")
+            room = lab.rooms.get(body.get("room") or "main")
             text = (body.get("text") or "").strip()
             if not room or not text:
                 return self._send(400, {"error": "room and text required"})
