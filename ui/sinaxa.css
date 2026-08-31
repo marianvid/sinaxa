@@ -1,4 +1,4 @@
-/* kenbet — all styling lives here.
+/* sinaxa — all styling lives here.
    Themes are two sets of the same variables; nothing below :root should
    hardcode a colour. Adding a light theme means filling in the second block
    and setting data-theme="light" on <html>. */

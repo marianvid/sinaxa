@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>kenbet</title>
-<link rel="stylesheet" href="/kenbet.css">
+<title>sinaxa</title>
+<link rel="stylesheet" href="/sinaxa.css">
 </head>
 <body>
 <div class="app">
 
   <aside class="side">
-    <div class="brand"><span class="logo">K</span><b>kenbet</b></div>
+    <div class="brand"><span class="logo">K</span><b>sinaxa</b></div>
     <div class="hd">Projects <u title="New project">+</u></div>
     <div class="scroll">
-      <div class="node"><span class="t">kenbet</span><span class="toggle" title="New session">+</span></div>
+      <div class="node"><span class="t">sinaxa</span><span class="toggle" title="New session">+</span></div>
       <div class="sessions" id="tree"></div>
     </div>
     <nav class="nav">
@@ -117,7 +117,7 @@ function renderTree(){
 /* ------------------------------------------------------------------ header */
 function renderTitle(){
   const r = room(), t = document.getElementById('title');
-  t.innerHTML = `<span class="proj">kenbet</span><span class="dot">/</span>`
+  t.innerHTML = `<span class="proj">sinaxa</span><span class="dot">/</span>`
     + `<span class="sess">${mainRm().name}</span>`
     + (r.key === 'main' ? '' : `<span class="dot">/</span><span class="sub">${r.name}</span>`);
 }

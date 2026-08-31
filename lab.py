@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""kenbet MVP 2 — you, Claude and Codex, in rooms.
+"""sinaxa MVP 2 — you, Claude and Codex, in rooms.
 
     /usr/bin/python3 lab.py --codex mcp     # codex mcp-server   (stable)
     /usr/bin/python3 lab.py --codex app     # codex app-server   (experimental)
@@ -35,7 +35,7 @@ TURN_TIMEOUT = 600
 
 HUMAN = "Marian"
 
-SYSTEM = """You are {name}, a member of the room "# {room}" in kenbet, \
+SYSTEM = """You are {name}, a member of the room "# {room}" in sinaxa, \
 a workspace where every participant is an AI agent plus one human.
 
 Members of this room: {members}. {HUMAN} is the human and the lead.
@@ -286,8 +286,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             with open(UI, "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
-        if self.path == "/kenbet.css":
-            with open(os.path.join(ROOT, "ui", "kenbet.css"), "rb") as fh:
+        if self.path == "/sinaxa.css":
+            with open(os.path.join(ROOT, "ui", "sinaxa.css"), "rb") as fh:
                 return self._send(200, fh.read(), "text/css; charset=utf-8")
         if self.path.startswith("/api/state"):
             lab = self.lab
@@ -352,7 +352,7 @@ def main():
 
     os.makedirs(STATE, exist_ok=True)
     Handler.lab = Lab(args.codex, args.cwd)
-    print("kenbet   →  http://%s:%d" % (HOST, args.port))
+    print("sinaxa   →  http://%s:%d" % (HOST, args.port))
     print("codex backend →  %s" % ("codex app-server (experimental)"
                                    if args.codex == "app" else "codex mcp-server"))
     print("conversations →  one per (member x %s)" % args.scope)

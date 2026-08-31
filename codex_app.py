@@ -57,7 +57,7 @@ class CodexAppBackend:
         threading.Thread(target=self._read, daemon=True).start()
         threading.Thread(target=self._read_err, daemon=True).start()
         self._request("initialize", {
-            "clientInfo": {"name": "kenbet", "title": "kenbet",
+            "clientInfo": {"name": "sinaxa", "title": "sinaxa",
                            "version": "0.0.1"},
             "capabilities": {"experimentalApi": True}}, timeout=START_TIMEOUT)
         self._notify("initialized", {})

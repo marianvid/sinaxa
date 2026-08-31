@@ -91,7 +91,7 @@ def main():
 
     send(proc, {"id": 1, "method": "initialize", "params": {
         "protocolVersion": "2025-06-18", "capabilities": {},
-        "clientInfo": {"name": "kenbet", "version": "0.0.1"}}})
+        "clientInfo": {"name": "sinaxa", "version": "0.0.1"}}})
     r = wait_id(1, "initialize", 30)
     print("2. initialize:", json.dumps(r.get("result", {}))[:200])
 
