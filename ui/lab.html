@@ -47,7 +47,8 @@
 /* ------------------------------------------------------------------ state */
 let S = null;              /* last /api/state payload */
 let ROOM = 'main';         /* selected room key */
-let OPEN = false;          /* is the session expanded in the sidebar */
+let OPEN = true;           /* is the session expanded in the sidebar */
+let SEL = new Set();       /* seat ids picked with cmd/ctrl-click */
 let POLL = null;
 
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
