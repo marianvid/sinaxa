@@ -269,7 +269,7 @@ function renderMembers() {
 function memberForm(member) {
   const engines = S.engines || [];
   const chosen = member ? member.engine : (engines[0] && engines[0].id);
-  modal(`<h2>${member ? 'Edit member' : 'Add member'}</h2>
+  const guard = modal(`<h2>${member ? 'Edit member' : 'Add member'}</h2>
     <label>Name <input id="mName" value="${esc(member ? member.name : '')}"></label>
     <label>Engine <select id="mEngine">
       ${engines.map((e) => `<option value="${e.id}" ${e.id === chosen ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}
@@ -289,7 +289,7 @@ function memberForm(member) {
     };
     if (member) await api('PATCH', '/api/members/' + member.id, body);
     else await api('POST', '/api/members', body);
-  });
+  }, 'Cancel', {track: true, valid: (root) => filled(root, '#mName')});
 
   const paint = async () => {
     const engine = engineById($('mEngine').value);
@@ -316,8 +316,11 @@ function memberForm(member) {
           `<option ${((member && member.effort) || engine.effort_default) === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>`
       : '<i class="hint">not set here for this engine</i>';
   };
-  $('mEngine').onchange = paint;
-  paint();
+  /* The model and effort controls do not exist until the engine is known,
+     so "unchanged" can only be recorded after the first paint. A later
+     repaint is a change the person made, and must leave Save alive. */
+  $('mEngine').onchange = () => paint().then(() => guard && guard.check());
+  paint().then(() => guard && guard.rebase());
 }
 
 /* ----------------------------------------------------------- the seats */
@@ -383,7 +386,8 @@ function seatDefForm(definition) {
                   default_member: $('dMember').value || null};
     if (definition) await api('PATCH', '/api/seatdefs/' + definition.id, body);
     else await api('POST', '/api/seatdefs', body);
-  });
+  }, 'Cancel', {track: true,
+                valid: (root) => filled(root, '#dRole, #dPrompt')});
 }
 
 /* ------------------------------------------------------ manage session */
@@ -399,13 +403,15 @@ function manageSession() {
         ${agents.map((m) => `<option value="${m.id}"
           ${m.id === seat.occupant ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
       </select></td>
-      <td><textarea data-prompt="${seat.id}" rows="3"
-            placeholder="${esc(seat.prompt_default)}">${esc(seat.prompt == null ? '' : seat.prompt)}</textarea>
-          <div class="hint">${seat.overridden
-            ? 'overrides the role default — empty it to go back to it'
-            : 'using the role default'}</div></td>
+      <td><textarea data-prompt="${seat.id}" rows="4"
+            >${esc(seat.prompt_effective)}</textarea>
+          <div class="hint" data-note="${seat.id}">${seat.overridden
+            ? 'this session’s own wording'
+            : 'the role’s wording, as defined in Seats'}</div></td>
       <td class="right">
-        <button class="ghost" data-save="${seat.id}">Save</button>
+        <button data-save="${seat.id}">Save</button>
+        <button class="ghost" data-reset="${seat.id}"
+          ${seat.overridden ? '' : 'disabled'}>Reset to default</button>
         <button class="ghost" data-clear="${seat.id}">Clear context</button>
         <button class="ghost bad" data-drop="${seat.id}">Remove seat</button>
       </td></tr>`).join('');
@@ -428,15 +434,43 @@ function manageSession() {
 
   const where = `?project=${PROJECT}&session=${SESSION}`;
   const card = $('card');
+  const byId = {};
+  (S.seats || []).forEach((seat) => { byId[seat.id] = seat; });
+
+  /* One row, one Save, dead until that row changes. */
+  card.querySelectorAll('tr[data-seat]').forEach((row) => {
+    const id = row.dataset.seat;
+    watch(row, row.querySelector(`[data-save="${id}"]`),
+          () => filled(row, 'textarea'));
+  });
+
   card.querySelectorAll('[data-save]').forEach((button) => {
     button.onclick = () => act(async () => {
       const id = button.dataset.save;
+      const written = card.querySelector(`[data-prompt="${id}"]`).value;
+      /* The box always shows the prompt in force. Leaving it as the role
+         wrote it means no override at all -- the server reads a blank as
+         "use the role's". */
+      const same = written.trim() === (byId[id].prompt_default || '').trim();
       const answer = await api('PATCH', '/api/seats/' + id, {
         project: PROJECT, session: SESSION,
         occupant: card.querySelector(`[data-occupant="${id}"]`).value,
-        prompt: card.querySelector(`[data-prompt="${id}"]`).value});
+        prompt: same ? '' : written});
       if (answer.warning) note(answer.warning, 'warn');
     }).then(closeModal);
+  });
+
+  card.querySelectorAll('[data-reset]').forEach((button) => {
+    button.onclick = () => {
+      const id = button.dataset.reset;
+      const box = card.querySelector(`[data-prompt="${id}"]`);
+      box.value = byId[id].prompt_default || '';
+      card.querySelector(`[data-note="${id}"]`).textContent =
+        'the role’s wording — edit it to make it this session’s own';
+      button.disabled = true;
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+      box.focus();
+    };
   });
   card.querySelectorAll('[data-clear]').forEach((button) => {
     button.onclick = () => act(() => api('POST',
@@ -447,10 +481,13 @@ function manageSession() {
     button.onclick = () => act(() => api('DELETE',
       '/api/seats/' + button.dataset.drop + where)).then(closeModal);
   });
-  if ($('addSeat')) $('addSeat').onclick = () => act(() => api('POST', '/api/seats', {
+  if ($('addSeat')) {
+    $('addSeat').disabled = !$('newSeatDef').value;
+    $('addSeat').onclick = () => act(() => api('POST', '/api/seats', {
     project: PROJECT, session: SESSION,
-    seat_def: $('newSeatDef').value,
-    occupant: $('newSeatMember').value})).then(closeModal);
+      seat_def: $('newSeatDef').value,
+      occupant: $('newSeatMember').value})).then(closeModal);
+  }
 }
 
 function askNewRoom() {
@@ -462,19 +499,47 @@ function askNewRoom() {
     await api('POST', '/api/rooms', {project: PROJECT, session: SESSION,
       name: $('rName').value.trim(), seats: picked.map((s) => s.id)});
     SEL.clear();
-  });
+  }, 'Cancel', {track: true, okLabel: 'Create',
+                valid: (root) => filled(root, '#rName')});
 }
 
 /* -------------------------------------------------------------- modals */
-function modal(html, onOk, okLabel) {
+
+/* Save stays dead until something actually changed. A button that saves
+   what is already saved teaches you to press it without reading. */
+function watch(root, button, valid) {
+  if (!button) return null;
+  const fields = () =>
+    Array.from(root.querySelectorAll('input, select, textarea'));
+  const snap = () => fields().map((f) =>
+    f.type === 'checkbox' ? String(f.checked) : f.value).join(' ');
+
+  let saved = snap();
+  const check = () => {
+    button.disabled = !(snap() !== saved && (!valid || valid(root)));
+  };
+  root.addEventListener('input', check);
+  root.addEventListener('change', check);
+  check();
+  return {check, rebase: () => { saved = snap(); check(); }};
+}
+
+const filled = (root, selector) =>
+  Array.from(root.querySelectorAll(selector)).every((f) => f.value.trim());
+
+function modal(html, onOk, cancelLabel, options) {
+  const settings = options || {};
   $('card').innerHTML = html +
     `<div class="actions">
-       ${onOk ? '<button id="mOk">Save</button>' : ''}
-       <button id="mCancel" class="ghost">${esc(okLabel || 'Cancel')}</button>
+       ${onOk ? `<button id="mOk">${esc(settings.okLabel || 'Save')}</button>` : ''}
+       <button id="mCancel" class="ghost">${esc(cancelLabel || 'Cancel')}</button>
      </div>`;
   $('modal').hidden = false;
   $('mCancel').onclick = closeModal;
   if (onOk) $('mOk').onclick = () => act(onOk).then(closeModal);
+  return settings.track
+    ? watch($('card'), $('mOk'), settings.valid)
+    : null;
 }
 
 function closeModal() { $('modal').hidden = true; }
@@ -490,7 +555,8 @@ function addProject() {
     await api('POST', '/api/projects', {name: $('pName').value.trim(),
                                         cwd: $('pCwd').value.trim() || null});
     PROJECT = null; SESSION = null; ROOM = null;
-  });
+  }, 'Cancel', {track: true, okLabel: 'Create',
+                valid: (root) => filled(root, '#pName')});
 }
 
 function removeProject() {
@@ -505,7 +571,7 @@ function removeProject() {
     const erase = $('pErase').checked ? '?erase=1' : '';
     await api('DELETE', '/api/projects/' + here.id + erase);
     PROJECT = null; SESSION = null; ROOM = null;
-  });
+  }, 'Cancel', {okLabel: 'Remove'});
 }
 
 function addSession() {
@@ -516,7 +582,8 @@ function addSession() {
     const answer = await api('POST', '/api/sessions',
       {project: PROJECT, name: $('sName').value.trim()});
     SESSION = answer.session.id; ROOM = null;
-  });
+  }, 'Cancel', {track: true, okLabel: 'Create',
+                valid: (root) => filled(root, '#sName')});
 }
 
 function removeSession(id) {
@@ -527,7 +594,7 @@ function removeSession(id) {
     const erase = $('sErase').checked ? '?erase=1&' : '?';
     await api('DELETE', '/api/sessions/' + id + erase + 'project=' + PROJECT);
     SESSION = null; ROOM = null;
-  });
+  }, 'Cancel', {okLabel: 'Remove'});
 }
 
 function removeRoom(id) {
@@ -540,7 +607,7 @@ function removeRoom(id) {
     await api('DELETE', '/api/rooms/' + id + erase +
               'project=' + PROJECT + '&session=' + SESSION);
     ROOM = null;
-  });
+  }, 'Cancel', {okLabel: 'Remove'});
 }
 
 async function send() {

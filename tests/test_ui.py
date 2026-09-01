@@ -78,7 +78,7 @@ JS = code_only(JS_RAW)
 
 BUILTINS = {
     "JSON", "Object", "Set", "Map", "Date", "String", "Number", "Math", "Array",
-    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams",
+    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams", "Event",
 }
 
 
@@ -130,6 +130,37 @@ class Markup(unittest.TestCase):
         for dead in ("kenbet", "foundry"):
             self.assertNotIn(dead, HTML.lower())
             self.assertNotIn(dead, CSS.lower())
+
+
+class Saving(unittest.TestCase):
+    """A Save that saves nothing teaches you to press it without reading.
+
+    The behaviour itself was checked in a browser: every form opens with Save
+    disabled, comes alive on a real change, and dies again when the change is
+    undone. What can be checked here is that the wiring is still in place.
+    """
+
+    def test_every_edit_form_tracks_whether_anything_changed(self):
+        forms = re.findall(r"(?:const \w+ = )?modal\(", JS)
+        tracked = JS.count("track: true")
+        self.assertEqual(tracked, 5,
+                         "an edit form lost its change tracking: %d tracked "
+                         "of %d modals" % (tracked, len(forms)))
+
+    def test_each_seat_row_has_its_own_guard(self):
+        # against the raw source: these are selectors, and code_only() strips
+        # the strings they live in
+        self.assertIn("card.querySelectorAll('tr[data-seat]')", JS_RAW)
+        self.assertIn("watch(row,", JS)
+
+    def test_a_destructive_confirmation_is_not_gated_on_a_change(self):
+        """Removing without ticking the box is a legitimate answer."""
+        self.assertEqual(JS_RAW.count("okLabel: 'Remove'"), 3)
+
+    def test_the_prompt_box_shows_the_prompt_in_force(self):
+        self.assertIn("prompt_effective", HTML)
+        self.assertNotIn("Use default", HTML)
+        self.assertIn("Reset to default", HTML)
 
 
 class Theme(unittest.TestCase):
