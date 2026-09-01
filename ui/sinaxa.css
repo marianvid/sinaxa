@@ -113,6 +113,11 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 .room .sw{width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
   font-size:8px;font-weight:700;color:#fff;flex:none}
 .room.free .t{color:var(--dim2);font-style:italic}
+.room.sel{background:color-mix(in srgb,var(--seat) 18%,transparent);color:var(--fg);
+  box-shadow:inset 2px 0 0 var(--seat)}
+.ctx button:disabled{color:var(--dim2);cursor:default}
+.ctx button:disabled:hover{background:none}
+.ctx .hint2{font-size:10.5px;color:var(--dim2);padding:2px 9px 6px}
 
 /* a seat in the sidebar: role on the left, occupant on the right */
 .seat{display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:6px;color:var(--dim)}
