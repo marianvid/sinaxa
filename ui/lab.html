@@ -271,6 +271,12 @@ function modal(html, onOk, okLabel, danger){
   return scrim;
 }
 
+/* The roles a software team actually has. A convenience list, not a
+   constraint — the point is that a seat is a role, and who fills it changes. */
+const ROLES = ["cto","tech lead","architect","backend","frontend","fullstack",
+               "devops","sre","qa","reviewer","security","data","designer",
+               "product owner","mobile","dba","docs"];
+
 function manageTeam(){
   /* Edits stay in this local copy: nothing is wired to the server yet. */
   const draft = S.seats.map(x => ({...x}));
