@@ -8,9 +8,9 @@ Same code either way; only the Codex adapter changes, so the two runs are
 comparable. Each backend keeps its own transcript under state/.
 
 Rooms:
-    main        you + Claude + Codex
-    claude      you + Claude
-    codex       you + Codex
+    main        the whole team
+    notes       yours alone; writing here wakes nobody
+    <seat>      one room per occupied seat, reached by clicking the seat
 
 Who answers: name someone with @ and only they answer; name nobody and every
 agent in the room answers. Agents address each other the same way, up to
@@ -58,10 +58,11 @@ class Room:
     it does anyway because the lead is the one writing.
     """
 
-    def __init__(self, key, name, members):
+    def __init__(self, key, name, members, kind="group"):
         self.key = key
         self.name = name
         self.members = members          # member keys, lead first
+        self.kind = kind                # team | direct | notes | group
         self.messages = []
         self.busy = False
 
@@ -91,11 +92,17 @@ class Lab:
             {"id": "backend",   "role": "backend",   "occupant": "codex",  "lead": False},
             {"id": "reviewer",  "role": "reviewer",  "occupant": None,     "lead": False},
         ]
+        # A seat opens a room. The lead's own seat opens notes — a place to
+        # write to yourself that never wakes an agent.
         self.rooms = {
-            "main":   Room("main", "main", ["you", "claude", "codex"]),
-            "claude": Room("claude", "claude", ["you", "claude"]),
-            "codex":  Room("codex", "codex", ["you", "codex"]),
+            "main":   Room("main", "main", ["you", "claude", "codex"], "team"),
+            "notes":  Room("notes", "notes", ["you"], "notes"),
+            "claude": Room("claude", "claude", ["you", "claude"], "direct"),
+            "codex":  Room("codex", "codex", ["you", "codex"], "direct"),
         }
+        for seat, room in (("cto", "notes"), ("architect", "claude"),
+                           ("backend", "codex"), ("reviewer", None)):
+            next(x for x in self.seats if x["id"] == seat)["room"] = room
         self.by_name = {m["name"].lower(): k for k, m in self.members.items()}
         self._load()
 
@@ -155,7 +162,7 @@ class Lab:
     def seats_of(self, room):
         """Main shows every seat, empty ones included — it is the team.
         A subroom shows the seats whose occupant is in it, plus the lead."""
-        if room.key == "main":
+        if room.key in ("main", "notes"):
             return self.seats
         return [s for s in self.seats
                 if s["lead"] or (s["occupant"] and s["occupant"] in room.members)]
@@ -294,8 +301,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "members": lab.members,
                 "seats": lab.seats,
-                "rooms": [{"key": r.key, "name": r.name, "members": r.members,
-                           "busy": r.busy, "messages": r.messages,
+                "rooms": [{"key": r.key, "name": r.name, "kind": r.kind,
+                           "members": r.members, "busy": r.busy,
+                           "messages": r.messages,
                            "seats": [s["id"] for s in lab.seats_of(r)]}
                           for r in lab.rooms.values()],
                 "status": lab.status(),

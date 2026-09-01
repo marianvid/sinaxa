@@ -68,10 +68,13 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 
 /* ---------------------------------------------------------------- sidebar */
 .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
-.brand{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
-.brand .logo{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
-  background:linear-gradient(150deg,var(--accent),var(--seat));font-weight:700;font-size:11px;color:#fff}
-.brand b{font-size:12.5px}
+/* The wordmark is the whole logo: no badge, no icon. A hairline in the two
+   brand colours sits under it, the width of the word. */
+.brand{padding:14px 14px 6px}
+.brand .mark{display:inline-block;font-size:15px;font-weight:650;letter-spacing:.14em;
+  color:var(--fg);line-height:1.1;padding-bottom:5px;position:relative}
+.brand .mark::after{content:"";position:absolute;left:0;right:.14em;bottom:0;height:2px;
+  border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--seat))}
 .hd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);
   padding:14px 14px 8px;display:flex;justify-content:space-between;align-items:center}
 .hd u{cursor:pointer;font-size:15px;text-decoration:none}
@@ -140,18 +143,23 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 .title .proj{font-size:11.5px;color:var(--dim2);letter-spacing:.02em}
 .title .dot{color:var(--line);font-size:11px}
 .title .sess{font-size:14px;font-weight:600;color:var(--fg);letter-spacing:.01em;
-  background:none;padding:0;cursor:default}
+  background:none;padding:0;cursor:pointer}
+.title .sess:hover{color:var(--accent)}
 .title .sub{font-size:11px;color:var(--dim2);margin:0;border:0;padding:0}
 
 .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:999px;
   padding:2px 9px;cursor:pointer;background:none;font-family:inherit;white-space:nowrap}
 .chip:hover{color:var(--fg);border-color:var(--dim2)}
 
-/* the seat strip under the header */
-.strip{border-bottom:1px solid var(--line);padding:7px 18px;display:flex;align-items:center;
-  gap:7px;background:var(--bg2);flex-wrap:wrap}
+/* Seats live in the header, after the breadcrumb. Each is the way into its
+   occupant's room, so they behave like tabs. */
+.top{flex-wrap:wrap}
+.seatbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.title{margin-right:4px}
 .pers{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;
-  padding:1px 10px 1px 3px;color:var(--dim);cursor:default}
+  padding:1px 10px 1px 3px;color:var(--dim);cursor:pointer}
+.pers:hover{color:var(--fg);border-color:var(--dim2)}
+.pers.on{background:var(--bg3);color:var(--fg);border-color:var(--accent)}
 .pers .sw{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;
   font-size:8.5px;font-weight:700;color:#fff}
 .pers .role{font-size:10px;color:var(--dim2);text-transform:uppercase;letter-spacing:.04em}

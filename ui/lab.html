@@ -10,7 +10,7 @@
 <div class="app">
 
   <aside class="side">
-    <div class="brand"><span class="logo">K</span><b>sinaxa</b></div>
+    <div class="brand"><span class="mark">sinaxa</span></div>
     <div class="hd">Projects <u title="New project">+</u></div>
     <div class="scroll">
       <div class="node"><span class="t">sinaxa</span><span class="toggle" title="New session">+</span></div>
@@ -27,7 +27,9 @@
   <section class="main">
     <header class="top">
       <div class="title" id="title"></div>
+      <div class="seatbar" id="seatbar"></div>
       <div class="grow"></div>
+      <button class="chip" id="managebtn">Manage team…</button>
     </header>
     <div class="thread" id="thread"></div>
     <div class="composer">
@@ -58,7 +60,7 @@ const hhmm = ts => { const d=new Date(ts*1000);
 
 const room    = () => S.rooms.find(r => r.key === ROOM) || S.rooms[0];
 const mainRm  = () => S.rooms.find(r => r.key === 'main');
-const subs    = () => S.rooms.filter(r => r.key !== 'main');
+const subs    = () => S.rooms.filter(r => r.kind === 'group');
 const seatById= id => S.seats.find(s => s.id === id);
 const memberOf= seat => seat.occupant ? S.members[seat.occupant] : null;
 const liveOf  = name => (S.status.agents || [])
@@ -71,55 +73,59 @@ function renderTree(){
 
   const row = document.createElement('div');
   row.className = 'sess' + (ROOM === 'main' ? ' on' : '');
-  row.innerHTML = `<span class="arrow ${OPEN?'open':''}" title="${OPEN?'collapse':'expand'}">▶</span>
+  row.innerHTML = `<span class="arrow ${OPEN ? 'open' : ''}" title="${OPEN ? 'collapse' : 'expand'}">\u25b6</span>
     <span class="t">${m.name}</span>` + (m.busy ? '<span class="spin"></span>' : '');
-  /* the arrow expands; the label selects. Two different things. */
+  /* the arrow expands, the label selects — two different things */
   row.querySelector('.arrow').onclick = e => { e.stopPropagation(); OPEN = !OPEN; render(); };
   row.onclick = () => { ROOM = 'main'; render(); };
-  row.oncontextmenu = e => menuFor(e, 'main');
   box.appendChild(row);
 
   if (!OPEN) return;
   const kids = document.createElement('div'); kids.className = 'sub';
-
+  if (!subs().length){
+    const p = document.createElement('div'); p.className = 'add';
+    p.textContent = 'no rooms yet'; kids.appendChild(p);
+  }
   subs().forEach(r => {
     const el = document.createElement('div');
     el.className = 'room' + (r.key === ROOM ? ' on' : '');
     el.innerHTML = `<span class="t">${r.name}</span>` + (r.busy ? '<span class="spin"></span>' : '');
     el.onclick = e => { e.stopPropagation(); ROOM = r.key; render(); };
-    el.oncontextmenu = e => menuFor(e, r.key);
     kids.appendChild(el);
   });
-
-  /* Seats are the only place a member is shown: the occupant and their live
-     state ride on the seat row, so nothing is duplicated elsewhere. */
-  S.seats.forEach(seat => {
-    const mem = memberOf(seat);
-    const a = mem ? liveOf(mem.name) : {};
-    const el = document.createElement('div');
-    el.className = 'seat' + (mem ? '' : ' free');
-    el.title = mem
-      ? (mem.kind === 'human' ? 'you \u2014 lead of every room'
-         : `${a.provider || mem.model} \u00b7 ${a.model || ''}\nconversation ${a.conversation || '\u2014'}`
-           + `\n${a.turns || 0} turns \u00b7 ${a.tokens || 0} tokens`)
-      : 'no one is in this seat';
-    el.innerHTML = `<span class="role">${seat.role}</span>`
-      + (seat.lead ? '<span class="star" title="lead">\u2605</span>' : '')
-      + (a.activity ? `<span class="act">${a.activity}\u2026</span>` : '')
-      + (mem ? `<span class="who"><span class="sw" style="background:${mem.color}">${mem.initial}</span>${mem.name}</span>`
-             : '<span class="who">empty</span>');
-    kids.appendChild(el);
-  });
-
   box.appendChild(kids);
 }
 
-/* ------------------------------------------------------------------ header */
-function renderTitle(){
+/* --------------------------------------------------------------- header
+   Everything about who is in the team lives here: the breadcrumb, then one
+   pill per seat. A seat is the way into its occupant's room. */
+function renderHead(){
   const r = room(), t = document.getElementById('title');
   t.innerHTML = `<span class="proj">sinaxa</span><span class="dot">/</span>`
-    + `<span class="sess">${mainRm().name}</span>`
-    + (r.key === 'main' ? '' : `<span class="dot">/</span><span class="sub">${r.name}</span>`);
+    + `<span class="sess" data-go="main">${mainRm().name}</span>`;
+  t.querySelector('[data-go]').onclick = () => { ROOM = 'main'; render(); };
+
+  const st = document.getElementById('seatbar'); st.innerHTML = '';
+  S.seats.forEach(seat => {
+    const mem = memberOf(seat);
+    const a = mem ? liveOf(mem.name) : {};
+    const el = document.createElement('span');
+    el.className = 'pers' + (seat.lead ? ' is-lead' : '') + (mem ? '' : ' free')
+                 + (a.activity ? ' busy' : '')
+                 + (seat.room && seat.room === ROOM ? ' on' : '');
+    el.title = !mem ? 'no one is in this seat'
+      : (mem.kind === 'human' ? 'your notes \u2014 nothing written here reaches an agent'
+         : `${a.provider || mem.model} \u00b7 ${a.model || ''}`
+           + `\nconversation ${a.conversation || '\u2014'}`
+           + `\n${a.turns || 0} turns \u00b7 ${a.tokens || 0} tokens`);
+    el.innerHTML = `<span class="sw" style="background:${mem ? mem.color : ''}">${mem ? mem.initial : '\u00b7'}</span>`
+      + `<span>${mem ? mem.name : 'empty'}</span><span class="role">${seat.role}</span>`
+      + (seat.lead ? ' <span class="star">\u2605</span>' : '')
+      + (a.activity ? ` <span class="act">${a.activity}\u2026</span>` : '');
+    if (seat.room) el.onclick = () => { ROOM = seat.room; render(); };
+    else el.onclick = () => toast('that seat is empty \u2014 assign someone in Manage team');
+    st.appendChild(el);
+  });
 }
 
 /* ------------------------------------------------------------------ thread */
@@ -127,8 +133,10 @@ function renderThread(){
   const r = room(), th = document.getElementById('thread');
   const atBottom = th.scrollTop + th.clientHeight >= th.scrollHeight - 40;
   if (!r.messages.length){
-    th.innerHTML = '<div class="empty">Empty room.<br>'
-      + 'Write something — @Claude or @Codex for one of them, nothing for both.</div>';
+    th.innerHTML = r.kind === 'notes'
+      ? '<div class="empty">Your notes.<br>Nothing written here reaches an agent.</div>'
+      : '<div class="empty">Empty room.<br>'
+        + 'Write something — @Claude or @Codex for one of them, nothing for both.</div>';
     return;
   }
   th.innerHTML = r.messages.map(m => {
@@ -168,40 +176,13 @@ function renderStatus(){
     +`<b>${turns}</b> turns<span class="sep">·</span><b>${toks.toLocaleString()}</b> tokens`;
 }
 
-function render(){ renderTree(); renderTitle(); renderThread(); renderStatus();
-  document.getElementById('sendbtn').disabled = room().busy; }
-
-/* ------------------------------------------------------------------ menus */
-function closeMenu(){ document.querySelectorAll('.ctx').forEach(m => m.remove()); }
-document.addEventListener('click', closeMenu);
-document.addEventListener('keydown', e => { if (e.key === 'Escape'){ closeMenu(); closeModal(); } });
-
-function menuFor(ev, key){
-  ev.preventDefault(); ev.stopPropagation(); closeMenu();
-  const isMain = key === 'main';
-  const r = S.rooms.find(x => x.key === key);
-  const menu = document.createElement('div'); menu.className = 'ctx';
-  const items = [];
-  if (isMain) items.push(['⤿','Compact…', () => dlgCompact()]);
-  items.push(['↺','Reconstruct…', () => dlgReconstruct(r)]);
-  items.push(['—']);
-  items.push(['◉','Manage team…', () => manageTeam()]);
-
-  menu.innerHTML = `<div class="hdr">${isMain ? 'session · ' + r.name : 'room · ' + r.name}</div>`;
-  items.forEach(it => {
-    if (it[0] === '—'){ const d = document.createElement('div'); d.className = 'rule';
-      menu.appendChild(d); return; }
-    const b = document.createElement('button');
-    b.innerHTML = `<i>${it[0]}</i>${it[1]}`;
-    b.onclick = e => { e.stopPropagation(); closeMenu(); it[2](); };
-    menu.appendChild(b);
-  });
-  document.body.appendChild(menu);
-  const w = menu.offsetWidth, h = menu.offsetHeight;
-  menu.style.left = Math.min(ev.clientX, innerWidth  - w - 8) + 'px';
-  menu.style.top  = Math.min(ev.clientY, innerHeight - h - 8) + 'px';
-  return false;
-}
+function render(){ renderTree(); renderHead(); renderThread(); renderStatus();
+  const r = room();
+  document.getElementById('sendbtn').disabled = r.busy;
+  document.getElementById('input').placeholder =
+      r.kind === 'notes'  ? 'A note to yourself…   nobody is woken'
+    : r.kind === 'direct' ? 'Message ' + (S.members[r.members[1]] || {name:r.name}).name + '…'
+    : 'Message the room…   @Claude or @Codex to address one'; }
 
 /* ------------------------------------------------------------------ dialogs
    Nothing below is wired to an action yet — what compact and reconstruct
@@ -220,43 +201,6 @@ function modal(html, onOk, okLabel, danger){
   scrim.querySelector('[data-ok]').onclick = () => { closeModal(); onOk && onOk(); };
   return scrim;
 }
-
-function dlgCompact(){
-  const agents = S.seats.filter(s => s.occupant && S.members[s.occupant].kind === 'agent');
-  modal(`<h3>Compact the session</h3>
-    <div class="lead">Every agent replaces what it remembers with a summary of it,
-      and carries on from there. The transcript is untouched: a marker is drawn
-      where the fold happened, history above it, continued context below.</div>
-    <div class="pending">Affects ${agents.length} agents:
-      ${agents.map(s => S.members[s.occupant].name + ' (' + s.role + ')').join(', ')}.
-      Each keeps its own summary — they hold different rooms, so they fold
-      different things.</div>
-    <div class="note">Not wired yet. Who writes the summary — the agent itself,
-      or you, editing it before it is applied — is still open.</div>`,
-    () => toast('Compact is not wired to anything yet'), 'Compact');
-}
-
-function dlgReconstruct(r){
-  const inRoom = r.seats.map(seatById)
-    .filter(s => s.occupant && S.members[s.occupant].kind === 'agent');
-  modal(`<h3>Reconstruct ${r.key === 'main' ? 'the session' : '“' + r.name + '”'}</h3>
-    <div class="lead">Close each agent's conversation and build it again from the
-      room transcript — from what was actually said, not from what the agent
-      concluded. Use it when an agent has gone off on a wrong understanding.</div>
-    <div class="pending">Affects ${inRoom.length} agents:
-      ${inRoom.map(s => S.members[s.occupant].name).join(', ') || '—'}.
-      ${r.key === 'main' ? 'Main and every subroom.' : 'This room only.'}
-      Nothing is deleted — the transcript is the record and it stays.</div>
-    <div class="note">Not wired yet. Where the replay starts, and what happens
-      when the wrong conclusion is itself in the transcript, is still open.</div>`,
-    () => toast('Reconstruct is not wired to anything yet'), 'Reconstruct');
-}
-
-/* The roles a software team actually has. The list is a convenience, not a
-   constraint — the point is that a seat is a role, and who fills it changes. */
-const ROLES = ["cto","tech lead","architect","backend","frontend","fullstack",
-               "devops","sre","qa","reviewer","security","data","designer",
-               "product owner","mobile","dba","docs"];
 
 function manageTeam(){
   /* Edits stay in this local copy: nothing is wired to the server yet. */
@@ -338,6 +282,7 @@ async function send(){
   refresh();
 }
 
+document.getElementById('managebtn').onclick = manageTeam;
 document.getElementById('sendbtn').onclick = send;
 document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
