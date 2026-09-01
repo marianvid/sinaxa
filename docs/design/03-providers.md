@@ -117,6 +117,55 @@ What it costs: no streaming, and no cheap recovery — if the process dies the
 conversation is gone and we replay from the room. Which is the safety net by
 design anyway.
 
+## opencode — measured (tools/probe_opencode.py)
+
+opencode 1.18.15, installed from homebrew. `opencode serve --port 4096` is an
+ordinary HTTP server with an OpenAPI 3.1 document at `/doc` (162 paths) and an
+SSE stream at `/event`. No stdio, no JSON-RPC, no subprocess plumbing.
+
+    POST /api/session                  -> {"id": "ses_..."}   (model optional)
+    POST /api/session/{id}/prompt      -> admitted, returns at once
+    GET  /api/session/{id}/message     -> the transcript, NEWEST FIRST
+    POST /api/session/{id}/compact     -> the context-clear primitive
+    GET  /api/session/{id}/event       -> that session's events
+
+One server, many sessions, one process:
+
+    turn 1 (3.0s) -> "OK."
+    turn 2 (3.0s) -> "Mi-ai dat numarul 4271."   (context intact)
+    server killed and restarted
+    turn 3 (fresh process) -> "4271"             (session survived)
+
+650 MB for the server process, shared by every session — against ~430 MB per
+Claude process and ~117 MB for a codex mcp-server hosting two conversations.
+
+Token usage arrives per message, already split:
+
+    {"input": 22, "output": 65, "reasoning": 0, "cache": {"read": 3193}}
+
+Traps found while probing, all of which the adapter must handle:
+
+- `/api/session/{id}/message` returns **newest first**. Reading `[-1]` gives
+  you the question you just asked, not the answer.
+- `POST /prompt` returns immediately; the turn is done when the newest
+  message is an assistant one carrying `finish`. `/wait` answers 503 while
+  there is nothing to wait for, so it cannot be used as the only signal.
+- A model must be **declared in the config**, not merely present at the
+  provider. `ai-lab/qwen-coder` is served by the box but absent from
+  `opencode.jsonc`, and the turn dies with `ModelUnavailableError` — silently,
+  with no assistant message and no error in the transcript. Only the log says
+  why.
+- For a few seconds after `opencode serve` prints "listening", providers are
+  not resolved yet and a prompt sent in that window fails the same way. The
+  adapter must wait for readiness, not for the port.
+- Message shape is `content: [{type: "text"|"reasoning", ...}]` on the
+  assistant side and a plain `text` field on the user side.
+
+What this buys: sinaxa stops being a process manager for this member and
+becomes an HTTP client. And opencode is multi-provider, so a user with
+neither a Claude nor a ChatGPT subscription can still fill a seat — including
+with a model on his own hardware.
+
 ## Consequence for the design
 
 The adapter interface is "a conversation". Each provider maps it however it
