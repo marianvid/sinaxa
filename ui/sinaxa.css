@@ -110,6 +110,9 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 .room:hover{background:var(--bg3);color:var(--fg)}
 .room.on{background:var(--bg3);color:var(--fg)}
 .room .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.room .sw{width:15px;height:15px;border-radius:4px;display:grid;place-items:center;
+  font-size:8px;font-weight:700;color:#fff;flex:none}
+.room.free .t{color:var(--dim2);font-style:italic}
 
 /* a seat in the sidebar: role on the left, occupant on the right */
 .seat{display:flex;align-items:center;gap:7px;padding:3px 8px;border-radius:6px;color:var(--dim)}

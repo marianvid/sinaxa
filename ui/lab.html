@@ -82,17 +82,36 @@ function renderTree(){
 
   if (!OPEN) return;
   const kids = document.createElement('div'); kids.className = 'sub';
-  if (!subs().length){
-    const p = document.createElement('div'); p.className = 'add';
-    p.textContent = 'no rooms yet'; kids.appendChild(p);
-  }
+
+  /* The same list as the header: one entry per seat. Clicking one opens the
+     room holding the lead and that seat's occupant. */
+  S.seats.forEach(seat => {
+    const mem = memberOf(seat);
+    const el = document.createElement('div');
+    el.className = 'room' + (seat.room && seat.room === ROOM ? ' on' : '')
+                 + (mem ? '' : ' free');
+    el.innerHTML = `<span class="t">${seat.role}</span>`
+      + (mem ? `<span class="sw" style="background:${mem.color}">${mem.initial}</span>` : '');
+    if (seat.room) el.onclick = e => { e.stopPropagation(); ROOM = seat.room; render(); };
+    else el.onclick = e => { e.stopPropagation();
+      toast('that seat is empty — assign someone in Manage team'); };
+    kids.appendChild(el);
+  });
+
+  /* Rooms you define yourself: the lead plus a chosen few. */
   subs().forEach(r => {
     const el = document.createElement('div');
     el.className = 'room' + (r.key === ROOM ? ' on' : '');
-    el.innerHTML = `<span class="t">${r.name}</span>` + (r.busy ? '<span class="spin"></span>' : '');
+    el.innerHTML = `<span class="t"># ${r.name}</span>` + (r.busy ? '<span class="spin"></span>' : '');
     el.onclick = e => { e.stopPropagation(); ROOM = r.key; render(); };
     kids.appendChild(el);
   });
+
+  const add = document.createElement('div'); add.className = 'add';
+  add.textContent = '+ New room';
+  add.onclick = e => { e.stopPropagation(); toast('New room — not wired yet'); };
+  kids.appendChild(add);
+
   box.appendChild(kids);
 }
 
