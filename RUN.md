@@ -1,74 +1,66 @@
 # Running sinaxa
 
-Use `/usr/bin/python3`, never the anaconda one.
+```
+/usr/bin/python3 -m src.server
+/usr/bin/python3 -m src.server --port 8789 --state ./state --cwd /path/to/work
+```
 
-## MVP 2 — you, Claude and Codex, in rooms
+Then open http://127.0.0.1:8789.
 
-    cd /Volumes/Marian_Backup/work/sinaxa
-    /usr/bin/python3 lab.py --codex mcp     # codex mcp-server   (stable contract)
-    /usr/bin/python3 lab.py --codex app     # codex app-server   (experimental)
+`--state` is where everything is kept, `--cwd` is the folder the agents read.
+`--opencode-port` (default 4096) says where `opencode serve` is, or should be
+started.
 
-Then http://127.0.0.1:8789
+## The first five minutes
 
-Same code both ways — only the Codex adapter changes, so the two runs are
-comparable. Each keeps its own transcript: `state/lab-mcp.jsonl`,
-`state/lab-app.jsonl`. Run them one at a time (same port), or add `--port`.
+Nothing is hardcoded, so a fresh install is empty and the order matters:
 
-Rooms: `# team` (both agents), `↳ claude`, `↳ codex`.
-The chip in the header cycles turn-taking: broadcast → mention →
-round_robin → lead.
+1. **Members** -- add yourself first, as the human lead. Then an agent per
+   engine you have: pick the engine, and the form changes to fit it.
+2. **Seats** -- add a role, write its default prompt, give it a default
+   member.
+3. **Projects** -- add one. It arrives with a session called `main`, a seat
+   for every role that has a default member, and a room each.
 
-Agents address each other by writing `@Claude` / `@Codex`. A reply is
-delivered ONLY to the members it names, never re-broadcast, and the chain is
-capped at 3 hops per message you send.
+Then write in a room. Naming nobody asks everyone in it; `@Name` asks only
+them.
 
-`--scope member` gives each member one conversation across all its rooms
-instead of one per room. Untested beyond starting up; the default is
-`--scope room`.
+## Tests
 
-## MVP 1 — the two-member version, kept
+```
+/usr/bin/python3 -W ignore::ResourceWarning -m unittest discover -s tests
+```
 
-    /usr/bin/python3 app.py        # http://127.0.0.1:8788
+144 of them, and none needs a subscription: the engine tests run the real
+adapters against fake binaries in `tests/fakes/`, and the model, context and
+API tests run against a fake engine that starts nothing.
 
-One room, you and Claude, one `claude -p` per message (`--resume`). Kept as
-the reference for what the cheap-and-simple version costs.
+To exercise the real ones, the probes in `tools/` each talk to one provider
+and print what it does.
 
-## What the smoke test showed
+## Things to keep an eye on
 
-    /usr/bin/python3 tools/smoke_lab.py mcp
-    /usr/bin/python3 tools/smoke_lab.py app
+**Leftover processes.** Claude spawns one per seat. After a session with
+several seats, check nothing was left behind:
 
-Both backends, same script, first turn each:
+```
+ps -eo pid,rss,command | grep "[a]llowedTools Read Grep Glob"
+ps -eo pid,rss,command | grep "[c]odex app-server"
+ps -eo pid,rss,command | grep "[o]pencode serve"
+```
 
-    broadcast to # team     Claude 2.1s   Codex 4.8s
-    agent to agent          Claude "that's for Codex" -> Codex asks Claude
-                            -> Claude answers                 total 8.9s
+sinaxa only ever kills an `opencode serve` it started itself, so one you are
+running in a terminal is safe.
 
-    mcp   2 conversations, 2 processes, 533 MB
-    app   2 conversations, 2 processes, 618 MB
+**Unclosed pipes.** `src/engines/claude_session.py` does not close the old
+process's stdout/stderr in `stop()`; the tests print `ResourceWarning` about
+it. Not fixed yet -- it is the same shape as the 600 MB leak from an earlier
+session.
 
-Memory is dominated by Claude: ~430 MB for one `claude` process against
-~117 MB for a `codex mcp-server` hosting every Codex conversation. On a
-128 GB machine neither matters yet, but the shape is worth remembering: each
-extra Claude conversation costs a whole process, each extra Codex one costs
-almost nothing.
+**codex effort.** Fixed at medium. It is a config key read when the process
+starts, and one process serves every codex seat, so per-seat effort would
+mean one process per effort level. To be revisited.
 
-## Known rough edges
-
-- Codex token counts read 0 in the status bar; the `token_count` event shape
-  did not match what codex_mcp.py expects. Cosmetic, not yet chased.
-- No streaming to the browser. The UI polls every 700ms while a room is
-  working and shows each member's activity (thinking / working / writing).
-- `claude` is started with read-only tools and codex with
-  `approval-policy: never`, `sandbox: read-only`. Nothing writes to disk.
-- **Process leak.** After a smoke run one `claude -p ... --resume` survived
-  the shutdown (600 MB, found with `ps`). `ClaudeSession.stop()` closes stdin
-  and kills after 5s, so something escaped it — most likely a session
-  restarted by the retry path in `ClaudeAgent.ask` after the original died.
-  Until it is fixed, check for strays:
-
-      ps -eo pid,rss,command | grep "allowedTools Read Grep Glob" | grep -v grep
-
-  A leaked process costs no tokens, only memory. Note that the ChatGPT
-  desktop app runs its own `codex app-server --listen stdio://` — that one is
-  not ours, leave it alone.
+**opencode models.** A model must be declared in opencode's own config, not
+merely served by the provider. sinaxa lists what opencode declares, so
+choosing from the list is safe; a name typed in elsewhere is not.

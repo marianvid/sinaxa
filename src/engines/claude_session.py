@@ -34,13 +34,15 @@ class TurnTimedOut(RuntimeError):
 
 class ClaudeSession:
     def __init__(self, session_id=None, cwd=None, binary="claude",
-                 model=None, instructions=None, allowed_tools=None):
+                 model=None, instructions=None, allowed_tools=None,
+                 effort=None):
         self.session_id = session_id
         self.cwd = cwd or os.getcwd()
         self.binary = binary
         self.model = model
         self.instructions = instructions
         self.allowed_tools = allowed_tools
+        self.effort = effort
         self.activity = ""
         self.tokens = 0
         self._proc = None
@@ -73,6 +75,8 @@ class ClaudeSession:
                "--verbose"]
         if self.model:
             cmd += ["--model", self.model]
+        if self.effort:
+            cmd += ["--effort", self.effort]
         if self.instructions:
             cmd += ["--append-system-prompt", self.instructions]
         if self.allowed_tools is not None:

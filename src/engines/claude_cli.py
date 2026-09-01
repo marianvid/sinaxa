@@ -10,7 +10,7 @@ import os
 import subprocess
 import threading
 
-from claude_session import ClaudeSession, SessionDied, TurnTimedOut
+from .claude_session import ClaudeSession, SessionDied, TurnTimedOut
 
 READ_ONLY_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
 
@@ -48,8 +48,8 @@ class ClaudeBackend:
         for a in self._agents:
             a.stop()
 
-    def agent(self, name, model=None, instructions=None):
-        a = ClaudeAgent(self, name, model, instructions)
+    def agent(self, name, model=None, instructions=None, effort=None):
+        a = ClaudeAgent(self, name, model, instructions, effort)
         self._agents.append(a)
         return a
 
@@ -57,13 +57,16 @@ class ClaudeBackend:
 class ClaudeAgent:
     provider = "claude-cli"
 
-    def __init__(self, backend, name, model=None, instructions=None):
+    def __init__(self, backend, name, model=None, instructions=None,
+                 effort=None):
         self.backend = backend
         self.name = name
         self.model = model
+        self.effort = effort
         self.session = ClaudeSession(cwd=backend.cwd, binary=backend.binary,
                                      model=model, instructions=instructions,
-                                     allowed_tools=READ_ONLY_TOOLS)
+                                     allowed_tools=READ_ONLY_TOOLS,
+                                     effort=effort)
         self._lock = threading.Lock()
 
     def ask(self, text, timeout=600):

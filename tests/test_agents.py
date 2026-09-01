@@ -19,9 +19,9 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from claude_session import ClaudeSession, SessionDied, TurnTimedOut   # noqa: E402
-from codex_app import CodexAppBackend                                 # noqa: E402
-from opencode_http import OpencodeBackend, model_ref                  # noqa: E402
+from src.engines.claude_session import ClaudeSession, SessionDied, TurnTimedOut   # noqa: E402
+from src.engines.codex_app import CodexAppBackend                                 # noqa: E402
+from src.engines.opencode_http import OpencodeBackend, model_ref                  # noqa: E402
 
 FAKES = os.path.join(ROOT, "tests", "fakes")
 

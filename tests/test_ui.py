@@ -11,7 +11,7 @@ import re
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HTML = open(os.path.join(ROOT, "ui", "lab.html"), encoding="utf-8").read()
+HTML = open(os.path.join(ROOT, "ui", "sinaxa.html"), encoding="utf-8").read()
 CSS = open(os.path.join(ROOT, "ui", "sinaxa.css"), encoding="utf-8").read()
 JS_RAW = re.search(r"<script>(.*)</script>", HTML, re.S).group(1)
 
@@ -78,7 +78,7 @@ JS = code_only(JS_RAW)
 
 BUILTINS = {
     "JSON", "Object", "Set", "Map", "Date", "String", "Number", "Math", "Array",
-    "Promise", "RegExp", "Error", "Boolean",
+    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams",
 }
 
 
@@ -108,7 +108,8 @@ class Identifiers(unittest.TestCase):
         known = defined | {
             "if", "for", "while", "switch", "catch", "return", "typeof", "await",
             "fetch", "parseInt", "parseFloat", "alert", "prompt", "confirm",
-            "setTimeout", "clearTimeout", "requestAnimationFrame", "isNaN",
+            "setTimeout", "setInterval", "clearTimeout", "requestAnimationFrame",
+            "isNaN", "of", "in", "new",
         }
         missing = sorted(c for c in called if c not in known)
         self.assertEqual(missing, [], "called but never defined: %s" % missing)
@@ -148,7 +149,7 @@ class Theme(unittest.TestCase):
                          "missing from the light theme: %s" % only_dark)
 
     def test_no_raw_colour_outside_the_palette(self):
-        body = CSS[CSS.index("*{box-sizing"):]
+        body = CSS[CSS.index("* { box-sizing"):]
         raw = re.findall(r":\s*(#[0-9a-fA-F]{3,8})\b", body)
         self.assertEqual(raw, [], "hardcoded colours outside :root: %s" % raw)
 
