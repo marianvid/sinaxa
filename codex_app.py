@@ -156,8 +156,12 @@ class CodexAppAgent:
                 self._chunks.append(piece)
                 self.activity = "writing"
         elif "tokenusage" in low.replace("/", "").replace("_", ""):
+            # thread/tokenUsage/updated carries {"tokenUsage": {"total": {...},
+            # "last": {...}}} -- the running total sits one level down.
             usage = params.get("tokenUsage") or {}
-            self.tokens = usage.get("totalTokens") or usage.get("total_tokens") or self.tokens
+            total = usage.get("total") or usage
+            self.tokens = (total.get("totalTokens") or total.get("total_tokens")
+                           or self.tokens)
         elif "turn/started" in low or "turnstarted" in low:
             self.activity = "thinking"
         elif "item/started" in low:
