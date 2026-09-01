@@ -27,9 +27,16 @@ Seat.prompt       this session's version of that role
 A room does not override anything. A room decides who is in the
 conversation, and that is all it decides.
 
-`Seat.prompt` is `None` when the role's default applies. An empty string is
-an override that says nothing -- blanking a prompt means blank, not "go back
-to the default". Going back is a separate action.
+A prompt is mandatory. A role cannot be defined without one, and a seat is
+never without instructions. `Seat.prompt` is therefore either an override or
+`None`, meaning the role's own -- and emptying an override is how you go
+back to the role's, because there is nothing else emptiness could mean.
+
+Saving a new prompt, or a new occupant, **restarts that seat's process on
+the spot**, and the interface says so. A model is handed its prompt when its
+process starts and never again, so a change read by a process already
+running would be no change at all. The replacement reads the rooms back on
+its first turn, so nothing is lost but the warm context.
 
 ## Seats
 

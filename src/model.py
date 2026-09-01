@@ -36,6 +36,14 @@ class ModelError(Exception):
     """A rule was broken. The message is meant to be shown to the user."""
 
 
+def blank_to_default(prompt):
+    """An override that has been emptied is not an empty prompt -- it is the
+    way back to the role's own. A seat is never without instructions."""
+    if prompt is None or not prompt.strip():
+        return None
+    return prompt
+
+
 # --------------------------------------------------------------- members
 class Member:
     """Who can take a seat: a human, or an engine started a particular way."""
@@ -78,6 +86,9 @@ class SeatDef:
     def __init__(self, role, prompt="", default_member=None, id=None):
         if not role.strip():
             raise ModelError("a role needs a name")
+        if not (prompt or "").strip():
+            raise ModelError("a role needs a prompt -- it is what its "
+                             "occupant is told it does")
         self.id = id or new_id("def")
         self.role = role
         self.prompt = prompt
@@ -100,13 +111,18 @@ class Seat:
     occupies it. An occupant can go *missing* -- the member deleted, its
     binary moved, its model gone from the engine's config -- and then the
     seat says so and waits to be given a new one.
+
+    A prompt is never empty. `prompt` is either an override, or None meaning
+    the role's own. Blanking an override is how you go back to the role's --
+    there is nothing else emptiness could sensibly mean, and an occupant
+    with no instructions at all is not a state we allow.
     """
 
     def __init__(self, seat_def, occupant, prompt=None, id=None):
         self.id = id or new_id("seat")
         self.seat_def = seat_def
         self.occupant = occupant
-        self.prompt = prompt            # None: use the definition's
+        self.prompt = blank_to_default(prompt)
 
     def as_dict(self):
         return {"id": self.id, "seat_def": self.seat_def,
@@ -386,6 +402,9 @@ class Sinaxa:
 
     def update_seat_def(self, def_id, **kw):
         definition = self.seat_def(def_id)
+        if "prompt" in kw and not (kw["prompt"] or "").strip():
+            raise ModelError("a role needs a prompt -- it is what its "
+                             "occupant is told it does")
         for field, value in kw.items():
             if field != "id":
                 setattr(definition, field, value)

@@ -66,7 +66,18 @@ class Roles(unittest.TestCase):
     def test_role_names_are_unique(self):
         sinaxa = furnished()
         with self.assertRaises(ModelError):
-            sinaxa.add_seat_def(role="Architect")
+            sinaxa.add_seat_def(role="Architect", prompt="anything")
+
+    def test_a_role_without_a_prompt_is_refused(self):
+        """A seat's whole purpose is to tell its occupant what it does."""
+        sinaxa = furnished()
+        for blank in ("", "   ", None):
+            with self.assertRaises(ModelError):
+                sinaxa.add_seat_def(role="reviewer", prompt=blank)
+        made = sinaxa.add_seat_def(role="reviewer", prompt="You review.")
+        with self.assertRaises(ModelError):
+            sinaxa.update_seat_def(made.id, prompt="  ")
+        self.assertEqual(sinaxa.seat_def(made.id).prompt, "You review.")
 
 
 class Projects(unittest.TestCase):
@@ -122,11 +133,15 @@ class Seats(unittest.TestCase):
         self.assertEqual(self.sinaxa.prompt_for(self.session, seat),
                          "You design, and you are blunt.")
 
-    def test_an_empty_override_is_an_override_not_a_fallback(self):
-        """Blanking the prompt must mean blank, not 'use the default'."""
-        seat = self.session.seats[0]
-        seat.prompt = ""
-        self.assertEqual(self.sinaxa.prompt_for(self.session, seat), "")
+    def test_an_emptied_override_is_the_way_back_to_the_roles_prompt(self):
+        """A prompt is mandatory. There is no seat without instructions, so
+        emptying an override can only mean one thing."""
+        from src.model import Seat
+        for blank in ("", "   ", "\n", None):
+            seat = Seat(self.sinaxa.seat_defs[0].id, "mem_x", blank)
+            self.assertIsNone(seat.prompt)
+            self.assertEqual(self.sinaxa.prompt_for(self.session, seat),
+                             "You design.")
 
     def test_removing_a_seat_takes_its_rooms_with_it(self):
         seat = self.session.seats[0]

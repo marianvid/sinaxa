@@ -78,9 +78,9 @@ async function act(work) {
   catch (exc) { note(exc.message); }
 }
 
-function note(text) {
+function note(text, kind) {
   const bar = document.createElement('div');
-  bar.className = 'note';
+  bar.className = 'note ' + (kind || 'bad');
   bar.textContent = text;
   document.body.appendChild(bar);
   setTimeout(() => bar.remove(), 6000);
@@ -402,10 +402,10 @@ function manageSession() {
       <td><textarea data-prompt="${seat.id}" rows="3"
             placeholder="${esc(seat.prompt_default)}">${esc(seat.prompt == null ? '' : seat.prompt)}</textarea>
           <div class="hint">${seat.overridden
-            ? 'overrides the role default' : 'using the role default'}</div></td>
+            ? 'overrides the role default — empty it to go back to it'
+            : 'using the role default'}</div></td>
       <td class="right">
         <button class="ghost" data-save="${seat.id}">Save</button>
-        <button class="ghost" data-reset="${seat.id}">Use default</button>
         <button class="ghost" data-clear="${seat.id}">Clear context</button>
         <button class="ghost bad" data-drop="${seat.id}">Remove seat</button>
       </td></tr>`).join('');
@@ -429,17 +429,14 @@ function manageSession() {
   const where = `?project=${PROJECT}&session=${SESSION}`;
   const card = $('card');
   card.querySelectorAll('[data-save]').forEach((button) => {
-    button.onclick = () => act(() => {
+    button.onclick = () => act(async () => {
       const id = button.dataset.save;
-      return api('PATCH', '/api/seats/' + id, {
+      const answer = await api('PATCH', '/api/seats/' + id, {
         project: PROJECT, session: SESSION,
         occupant: card.querySelector(`[data-occupant="${id}"]`).value,
         prompt: card.querySelector(`[data-prompt="${id}"]`).value});
+      if (answer.warning) note(answer.warning, 'warn');
     }).then(closeModal);
-  });
-  card.querySelectorAll('[data-reset]').forEach((button) => {
-    button.onclick = () => act(() => api('PATCH', '/api/seats/' + button.dataset.reset,
-      {project: PROJECT, session: SESSION, clear_prompt: true})).then(closeModal);
   });
   card.querySelectorAll('[data-clear]').forEach((button) => {
     button.onclick = () => act(() => api('POST',

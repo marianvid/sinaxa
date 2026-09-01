@@ -26,6 +26,14 @@ START_TIMEOUT = 60
 TURN_TIMEOUT = 600
 
 
+def close(stream):
+    try:
+        if stream is not None:
+            stream.close()
+    except Exception:
+        pass
+
+
 class CodexAppBackend:
     label = "codex app-server"
     can_resume = True
@@ -39,6 +47,7 @@ class CodexAppBackend:
         self._threads = {}                 # thread id -> agent
         self._lock = threading.Lock()
         self._stderr = []
+        self._readers = []
 
     @property
     def alive(self):
@@ -54,8 +63,12 @@ class CodexAppBackend:
         self._proc = subprocess.Popen(
             [self.binary, "app-server"], cwd=self.cwd, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-        threading.Thread(target=self._read, daemon=True).start()
-        threading.Thread(target=self._read_err, daemon=True).start()
+        self._readers = [
+            threading.Thread(target=self._read, args=(self._proc,), daemon=True),
+            threading.Thread(target=self._read_err, args=(self._proc,),
+                             daemon=True)]
+        for reader in self._readers:
+            reader.start()
         self._request("initialize", {
             "clientInfo": {"name": "sinaxa", "title": "sinaxa",
                            "version": "0.0.1"},
@@ -64,20 +77,48 @@ class CodexAppBackend:
         return self
 
     def stop(self):
+        """Every pipe closed, the process reaped, the readers wound down.
+
+        One server holds every thread, so a leak here is a leak for the whole
+        of sinaxa.
+        """
         proc, self._proc = self._proc, None
-        if proc and proc.poll() is None:
+        readers, self._readers = self._readers, []
+        self._threads.clear()
+        if proc is None:
+            return
+
+        close(proc.stdin)
+        if proc.poll() is None:
             proc.terminate()
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        else:
+            proc.wait()
+
+        for reader in readers:
+            reader.join(timeout=2)
+        close(proc.stdout)
+        close(proc.stderr)
 
     def stderr_tail(self, n=4):
         return " | ".join(self._stderr[-n:])
 
     # ---------------------------------------------------------- plumbing
-    def _read(self):
-        for line in self._proc.stdout:
+    def _read(self, proc):
+        try:
+            self._read_lines(proc)
+        except (ValueError, OSError):
+            pass                    # the pipe was closed under us: we are done
+
+    def _read_lines(self, proc):
+        for line in proc.stdout:
             line = line.strip()
             if not line:
                 continue
@@ -97,10 +138,13 @@ class CodexAppBackend:
             if agent:
                 agent._on_event(msg.get("method", ""), params)
 
-    def _read_err(self):
-        for line in self._proc.stderr:
-            self._stderr.append(line.rstrip())
-            del self._stderr[:-40]
+    def _read_err(self, proc):
+        try:
+            for line in proc.stderr:
+                self._stderr.append(line.rstrip())
+                del self._stderr[:-40]
+        except (ValueError, OSError):
+            pass
 
     def _notify(self, method, params):
         with self._lock:

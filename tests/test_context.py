@@ -154,17 +154,49 @@ class ClearingContext(Furnished):
         self.assertIn("remember this", second.heard[0],
                       "the room's history is what a fresh agent is given")
 
-    def test_changing_the_prompt_retires_the_stale_agent(self):
-        """The prompt is sent once, at the first turn -- so a changed prompt
-        that kept the same agent would never be read."""
+    def test_changing_the_prompt_restarts_the_process_at_once(self):
+        """A model is told its prompt when its process starts and never
+        again, so saving a new one has to replace the process there and
+        then -- not next time, and not silently never."""
         self.say(self.session.all_room, "hello")
         first = self.engines.agents["Claude"]
-        self.app.update_seat(self.project.id, self.session.id,
-                             self.seat["Claude"].id, prompt="Be blunt.")
-        self.say(self.session.all_room, "again")
+
+        _, restarted = self.app.update_seat(
+            self.project.id, self.session.id, self.seat["Claude"].id,
+            prompt="Be blunt.")
+
+        self.assertTrue(restarted, "the interface was not told to warn")
+        self.assertTrue(first.stopped, "the old process was left running")
         second = self.engines.agents["Claude"]
         self.assertIsNot(first, second)
         self.assertIn("Be blunt.", second.instructions)
+
+    def test_the_replacement_reads_the_rooms_back(self):
+        self.say(self.session.all_room, "remember this")
+        self.app.update_seat(self.project.id, self.session.id,
+                             self.seat["Claude"].id, prompt="Be blunt.")
+        self.say(self.session.all_room, "and now")
+        self.assertIn("remember this",
+                      self.engines.agents["Claude"].heard[0])
+
+    def test_saving_the_same_prompt_again_leaves_the_process_alone(self):
+        """Nothing changed, so nothing is thrown away."""
+        self.say(self.session.all_room, "hello")
+        first = self.engines.agents["Claude"]
+        _, restarted = self.app.update_seat(
+            self.project.id, self.session.id, self.seat["Claude"].id,
+            occupant=self.seat["Claude"].occupant, prompt=None)
+        self.assertFalse(restarted)
+        self.assertFalse(first.stopped)
+
+    def test_emptying_the_prompt_puts_the_roles_own_back(self):
+        self.app.update_seat(self.project.id, self.session.id,
+                             self.seat["Claude"].id, prompt="Be blunt.")
+        self.app.update_seat(self.project.id, self.session.id,
+                             self.seat["Claude"].id, prompt="   ")
+        self.say(self.session.all_room, "hello")
+        self.assertIn("You are the architect.",
+                      self.engines.agents["Claude"].instructions)
 
     def test_changing_the_occupant_retires_the_agent_too(self):
         self.say(self.session.all_room, "hello")

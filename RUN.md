@@ -31,7 +31,7 @@ them.
 /usr/bin/python3 -W ignore::ResourceWarning -m unittest discover -s tests
 ```
 
-144 of them, and none needs a subscription: the engine tests run the real
+160 of them, and none needs a subscription: the engine tests run the real
 adapters against fake binaries in `tests/fakes/`, and the model, context and
 API tests run against a fake engine that starts nothing.
 
@@ -40,8 +40,11 @@ and print what it does.
 
 ## Things to keep an eye on
 
-**Leftover processes.** Claude spawns one per seat. After a session with
-several seats, check nothing was left behind:
+**Leftover processes.** Claude spawns one per seat. `stop()` closes all
+three pipes, waits for the process and reaps it, and `App.stop()` is
+registered with atexit so a crash takes the agents with it. `tests/
+test_cleanup.py` counts descriptors and process-table entries to keep it
+that way. To check by hand after a long session:
 
 ```
 ps -eo pid,rss,command | grep "[a]llowedTools Read Grep Glob"
@@ -51,11 +54,6 @@ ps -eo pid,rss,command | grep "[o]pencode serve"
 
 sinaxa only ever kills an `opencode serve` it started itself, so one you are
 running in a terminal is safe.
-
-**Unclosed pipes.** `src/engines/claude_session.py` does not close the old
-process's stdout/stderr in `stop()`; the tests print `ResourceWarning` about
-it. Not fixed yet -- it is the same shape as the 600 MB leak from an earlier
-session.
 
 **codex effort.** Fixed at medium. It is a config key read when the process
 starts, and one process serves every codex seat, so per-seat effort would

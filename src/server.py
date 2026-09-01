@@ -206,11 +206,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if parts[:2] == ["api", "seats"] and len(parts) == 3:
             project, session = self.where(body)
-            seat = app.update_seat(project, session, parts[2],
-                                   occupant=body.get("occupant"),
-                                   prompt=body.get("prompt"),
-                                   clear_prompt=bool(body.get("clear_prompt")))
-            return {"ok": True, "seat": seat.as_dict()}
+            seat, restarted = app.update_seat(project, session, parts[2],
+                                              occupant=body.get("occupant"),
+                                              prompt=body.get("prompt"))
+            answer = {"ok": True, "seat": seat.as_dict(),
+                      "restarted": restarted}
+            if restarted:
+                answer["warning"] = (
+                    "the seat's process was restarted -- a running model is "
+                    "only ever told its prompt once. It reads the rooms back "
+                    "on its next turn.")
+            return answer
 
         raise KeyError("no such endpoint")
 

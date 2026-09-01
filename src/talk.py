@@ -130,6 +130,18 @@ class Talk:
         conversation.delivered = 0
         return conversation
 
+    def restart(self, seat):
+        """Stop the seat's process and put a new one in its place, now.
+
+        Used when what a process was told at birth is no longer true. Says
+        whether a process was actually running, so the interface can warn
+        that it went. The new one reads the rooms back on its first turn.
+        """
+        was_running = bool(self.conversation(seat).agent)
+        self.clear(seat)
+        self.start(seat)
+        return was_running
+
     # ------------------------------------------------------------ speaking
     def line(self, message):
         return "[%s - %s] %s" % (message.get("room_name", "?"),

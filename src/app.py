@@ -4,11 +4,12 @@ The HTTP layer in server.py turns requests into calls on this object and
 nothing else, so every action can be tested without a socket.
 """
 
+import atexit
 import os
 
 from . import engines as engines_mod
 from .engines import Engines
-from .model import ModelError, Sinaxa
+from .model import ModelError, Sinaxa, blank_to_default
 from .store import Store
 from .talk import Talk
 
@@ -22,6 +23,9 @@ class App:
         self.engines = engines or Engines(self.cwd, binaries=binaries,
                                           opencode_port=opencode_port)
         self._talks = {}
+        # A crash, a Ctrl-C, an exception on the way out: whatever happens,
+        # nothing of ours outlives the interpreter.
+        atexit.register(self.stop)
 
     # ------------------------------------------------------------ helpers
     def talk(self, project, session):
@@ -131,22 +135,34 @@ class App:
         return seat
 
     def update_seat(self, project_id, session_id, seat_id, occupant=None,
-                    prompt=None, clear_prompt=False):
-        """Changing the occupant or the prompt makes the live context stale:
-        the prompt is only ever sent at the first turn. So the agent is let
-        go, and comes back with what it should have been told."""
+                    prompt=None):
+        """Save, and restart the seat's process there and then.
+
+        The prompt is only ever handed to a model when its process starts, so
+        a changed prompt read by a process already running is no change at
+        all. Rather than leave a button that quietly does nothing, the old
+        process is stopped and a new one takes its place, which reads the
+        rooms' transcripts back on its first turn. Returns whether that
+        happened, so the interface can say so.
+
+        An emptied prompt is not an empty prompt: it is the way back to the
+        role's own.
+        """
         project, session, _ = self.locate(project_id, session_id)
         seat = session.seat(seat_id)
+        was = (seat.occupant, seat.prompt)
+
         if occupant is not None:
             self.sinaxa.member(occupant)
             seat.occupant = occupant
-        if clear_prompt:
-            seat.prompt = None
-        elif prompt is not None:
-            seat.prompt = prompt
-        self.talk(project, session).clear(seat)
+        if prompt is not None:
+            seat.prompt = blank_to_default(prompt)
+
+        restarted = False
+        if (seat.occupant, seat.prompt) != was:
+            restarted = self.talk(project, session).restart(seat)
         self.store.save_session(project, session)
-        return seat
+        return seat, restarted
 
     def remove_seat(self, project_id, session_id, seat_id):
         project, session, _ = self.locate(project_id, session_id)
@@ -261,6 +277,17 @@ class App:
         return self.engines.models_for(engine)
 
     def stop(self):
+        """Take everything down: agents first, then the backends they sat in.
+
+        Called on the way out of the server, and again by atexit, so it must
+        be safe to call twice.
+        """
+        for talk in self._talks.values():
+            for seat in list(talk.session.seats):
+                try:
+                    talk.clear(seat)
+                except Exception:
+                    pass
         self.engines.stop()
 
 

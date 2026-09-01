@@ -260,12 +260,13 @@ class Seats(OverHttp):
         self.assertEqual(changed["prompt_effective"], "You design, briefly.")
         self.assertTrue(changed["overridden"])
 
-    def test_the_override_is_dropped_back_to_the_roles_default(self):
+    def test_emptying_the_override_goes_back_to_the_roles_default(self):
+        """A prompt is never empty: blanking one is how you undo it."""
         seat = self.first["seats"][0]
         self.call("PATCH", "/api/seats/" + seat["id"],
                   dict(self.where(), prompt="Something else."))
         self.call("PATCH", "/api/seats/" + seat["id"],
-                  dict(self.where(), clear_prompt=True))
+                  dict(self.where(), prompt="   "))
         state = self.state(project=self.project["id"], session=self.session)
         back = next(s for s in state["seats"] if s["id"] == seat["id"])
         self.assertFalse(back["overridden"])

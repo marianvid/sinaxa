@@ -47,6 +47,7 @@ class OpencodeBackend:
         self.binary = binary
         self.poll = poll
         self._proc = None          # None when we attached to somebody else's
+        self._reader = None
         self._stderr = []
         self._lock = threading.Lock()
 
@@ -85,7 +86,9 @@ class OpencodeBackend:
                      "--hostname", self.host],
                     cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True, bufsize=1)
-                threading.Thread(target=self._read_err, daemon=True).start()
+                self._reader = threading.Thread(
+                    target=self._read_err, args=(self._proc,), daemon=True)
+                self._reader.start()
             deadline = time.time() + timeout
             while time.time() < deadline:
                 if self._proc.poll() is not None:
@@ -97,24 +100,42 @@ class OpencodeBackend:
                                % (timeout, self.stderr_tail()))
 
     def stop(self):
-        """Only ever kills a server we started ourselves."""
+        """Only ever kills a server we started ourselves -- and when it does,
+        it takes the pipes and the reader with it."""
         proc, self._proc = self._proc, None
-        if proc is None or proc.poll() is not None:
-            return
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
-
-    def _read_err(self):
-        proc = self._proc
+        reader, self._reader = self._reader, None
         if proc is None:
             return
-        for line in proc.stderr:
-            self._stderr.append(line.rstrip())
-            del self._stderr[:-40]
+
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        else:
+            proc.wait()
+
+        if reader:
+            reader.join(timeout=2)
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:
+                pass
+
+    def _read_err(self, proc):
+        try:
+            for line in proc.stderr:
+                self._stderr.append(line.rstrip())
+                del self._stderr[:-40]
+        except (ValueError, OSError):
+            pass
 
     def stderr_tail(self, n=4):
         return " | ".join(self._stderr[-n:])

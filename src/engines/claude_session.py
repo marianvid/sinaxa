@@ -24,6 +24,15 @@ import uuid
 DEFAULT_TIMEOUT = 300
 
 
+def close(stream):
+    """Shut a pipe and never make a fuss about it."""
+    try:
+        if stream is not None:
+            stream.close()
+    except Exception:
+        pass
+
+
 class SessionDied(RuntimeError):
     pass
 
@@ -48,6 +57,7 @@ class ClaudeSession:
         self._proc = None
         self._events = queue.Queue()
         self._stderr = []
+        self._readers = []
         self._lock = threading.Lock()
         self.started_at = None
         self.turns = 0
@@ -89,23 +99,47 @@ class ClaudeSession:
             cmd, cwd=self.cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, bufsize=1)
         self.started_at = time.time()
-        threading.Thread(target=self._read_stdout, daemon=True).start()
-        threading.Thread(target=self._read_stderr, daemon=True).start()
+        self._readers = [
+            threading.Thread(target=self._read_stdout, args=(self._proc,),
+                             daemon=True),
+            threading.Thread(target=self._read_stderr, args=(self._proc,),
+                             daemon=True)]
+        for reader in self._readers:
+            reader.start()
         return self
 
     def stop(self):
+        """Leave nothing behind: no process, no pipe, no reader thread.
+
+        A process has three pipes and only one of them is stdin. Closing
+        stdin alone leaves two file descriptors attached to a process that
+        no longer exists, and a few hundred of those is a machine that
+        cannot open a file any more. So: close stdin to say goodbye, wait
+        for it to go, let the reader threads run out, then close what they
+        were reading.
+        """
         proc, self._proc = self._proc, None
-        if proc is None or proc.poll() is not None:
+        readers, self._readers = self._readers, []
+        if proc is None:
             return
-        try:
-            proc.stdin.close()
-        except Exception:
-            pass
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
+
+        close(proc.stdin)
+        if proc.poll() is None:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        else:
+            proc.wait()                       # reap it, do not leave a zombie
+
+        for reader in readers:
+            reader.join(timeout=2)
+        close(proc.stdout)
+        close(proc.stderr)
 
     def switch_to(self, session_id):
         """Point at another session and resume it in a fresh process."""
@@ -121,27 +155,27 @@ class ClaudeSession:
         self.turns = 0
 
     # ------------------------------------------------------------ plumbing
-    def _read_stdout(self):
-        proc = self._proc
-        if proc is None:
-            return
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                self._events.put(json.loads(line))
-            except json.JSONDecodeError:
-                self._events.put({"type": "raw", "text": line})
+    def _read_stdout(self, proc):
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    self._events.put(json.loads(line))
+                except json.JSONDecodeError:
+                    self._events.put({"type": "raw", "text": line})
+        except (ValueError, OSError):
+            pass                      # the pipe was closed under us: we are done
         self._events.put({"type": "_eof"})
 
-    def _read_stderr(self):
-        proc = self._proc
-        if proc is None:
-            return
-        for line in proc.stderr:
-            self._stderr.append(line.rstrip())
-            del self._stderr[:-40]
+    def _read_stderr(self, proc):
+        try:
+            for line in proc.stderr:
+                self._stderr.append(line.rstrip())
+                del self._stderr[:-40]
+        except (ValueError, OSError):
+            pass
 
     def stderr_tail(self, n=8):
         return "\n".join(self._stderr[-n:])

@@ -45,8 +45,10 @@ class ClaudeBackend:
         return self
 
     def stop(self):
-        for a in self._agents:
-            a.stop()
+        """Every agent here owns a process. Stop them all, keep none."""
+        agents, self._agents = self._agents, []
+        for agent in agents:
+            agent.stop()
 
     def agent(self, name, model=None, instructions=None, effort=None):
         a = ClaudeAgent(self, name, model, instructions, effort)
@@ -97,3 +99,5 @@ class ClaudeAgent:
 
     def stop(self):
         self.session.stop()
+        if self in self.backend._agents:
+            self.backend._agents.remove(self)
