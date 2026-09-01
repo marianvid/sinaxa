@@ -49,6 +49,7 @@ let S = null;              /* last /api/state payload */
 let ROOM = 'main';         /* selected room key */
 let OPEN = true;           /* is the session expanded in the sidebar */
 let SEL = new Set();       /* seat ids picked with cmd/ctrl-click */
+let STICK = true;          /* was the thread at the bottom before this render */
 let POLL = null;
 
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -164,7 +165,7 @@ function renderHead(){
 /* ------------------------------------------------------------------ thread */
 function renderThread(){
   const r = room(), th = document.getElementById('thread');
-  const atBottom = th.scrollTop + th.clientHeight >= th.scrollHeight - 40;
+  STICK = th.scrollTop + th.clientHeight >= th.scrollHeight - 40;
   if (!r.messages.length){
     th.innerHTML = r.kind === 'notes'
       ? '<div class="empty">Your notes.<br>Nothing written here reaches an agent.</div>'
@@ -187,7 +188,9 @@ function renderThread(){
       <div class="who"><b>${esc(a.name)}</b>${tags}<span class="time">${hhmm(m.ts)}</span></div>
       <div class="bd">${fmt(m.text)}</div></div></div>`;
   }).join('');
-  if (atBottom) th.scrollTop = th.scrollHeight;
+  /* The scroll is applied at the end of render(), not here: the status bar
+     is filled after this and takes height away from the thread, so scrolling
+     now would land short by exactly that much. */
 }
 
 /* ------------------------------------------------------------------ status */
@@ -215,7 +218,9 @@ function render(){ renderTree(); renderHead(); renderThread(); renderStatus();
   document.getElementById('input').placeholder =
       r.kind === 'notes'  ? 'A note to yourself…   nobody is woken'
     : r.kind === 'direct' ? 'Message ' + (S.members[r.members[1]] || {name:r.name}).name + '…'
-    : 'Message the room…   @Claude or @Codex to address one'; }
+    : 'Message the room…   @Claude or @Codex to address one';
+  if (STICK) requestAnimationFrame(() => {
+    const th = document.getElementById('thread'); th.scrollTop = th.scrollHeight; }); }
 
 /* --------------------------------------------------------------- selection
    A room is the lead plus the agents you picked, so it takes at least two
