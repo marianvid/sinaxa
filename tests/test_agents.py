@@ -10,6 +10,7 @@ from, and where in the reply the ids and the token counts sit.
 import json
 import os
 import shutil
+import socket
 import sys
 import tempfile
 import time
@@ -20,6 +21,7 @@ sys.path.insert(0, ROOT)
 
 from claude_session import ClaudeSession, SessionDied, TurnTimedOut   # noqa: E402
 from codex_app import CodexAppBackend                                 # noqa: E402
+from opencode_http import OpencodeBackend, model_ref                  # noqa: E402
 
 FAKES = os.path.join(ROOT, "tests", "fakes")
 
@@ -44,10 +46,12 @@ class FakeBinary(unittest.TestCase):
         self.log = os.path.join(self._tmp, "argv.log")
         os.environ["FAKE_LOG"] = self.log
         os.environ.pop("FAKE_MODE", None)
+        os.environ.pop("FAKE_WARMUP", None)
 
     def tearDown(self):
         os.environ.pop("FAKE_LOG", None)
         os.environ.pop("FAKE_MODE", None)
+        os.environ.pop("FAKE_WARMUP", None)
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def logged(self):
@@ -276,6 +280,170 @@ class Codex(FakeBinary):
         self.assertFalse(b.alive)
         with self.assertRaises(OSError):
             os.kill(pid, 0)
+
+
+# ------------------------------------------------------------- opencode
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+class Opencode(FakeBinary):
+    fake = "fake_opencode.py"
+
+    def backend(self, **kw):
+        b = OpencodeBackend(port=free_port(), binary=self.binary, poll=0.05, **kw)
+        self.addCleanup(b.stop)
+        return b
+
+    def test_a_model_is_written_provider_slash_id(self):
+        self.assertEqual(model_ref("ai-lab/llama-gemma-26b"),
+                         {"providerID": "ai-lab", "id": "llama-gemma-26b"})
+        self.assertIsNone(model_ref(None))
+        with self.assertRaises(ValueError):
+            model_ref("llama-gemma-26b")
+
+    def test_the_server_is_started_with_the_port_we_asked_for(self):
+        b = self.backend()
+        b.start()
+        argv = self.spawns()[0]
+        self.assertEqual(argv[0], "serve")
+        self.assertEqual(argv[argv.index("--port") + 1], str(b.port))
+        self.assertTrue(b.ours, "we started this one, so we own it")
+
+    def test_readiness_waits_for_the_providers_not_for_the_port(self):
+        """The window in which a real turn dies with nothing in the transcript."""
+        os.environ["FAKE_WARMUP"] = "1.5"
+        b = self.backend()
+        started = time.time()
+        b.start()
+        self.assertGreaterEqual(time.time() - started, 1.5)
+        self.assertTrue(b.ready())
+
+    def test_a_server_already_running_is_used_rather_than_duplicated(self):
+        first = self.backend()
+        first.start()
+        second = OpencodeBackend(port=first.port, binary=self.binary, poll=0.05)
+        self.addCleanup(second.stop)
+        second.start()
+        self.assertEqual(len(self.spawns()), 1, "a second server was spawned")
+        self.assertFalse(second.ours)
+        self.assertEqual(second.pids, [])
+
+    def test_stopping_leaves_a_server_we_did_not_start_alone(self):
+        first = self.backend()
+        first.start()
+        second = OpencodeBackend(port=first.port, binary=self.binary, poll=0.05)
+        second.start()
+        second.stop()
+        self.assertTrue(first.ready(), "it killed a server it did not own")
+
+    def test_the_declared_models_are_the_ones_the_config_lists(self):
+        b = self.backend()
+        b.start()
+        self.assertIn(("ai-lab", "llama-qwen36-35b"), b.models())
+        self.assertIn(("mac", "llama-glm-air"), b.models())
+
+    def test_the_answer_is_the_reply_not_the_question_we_just_asked(self):
+        """The transcript is newest first; reading [-1] gives back the prompt."""
+        a = self.backend().agent("opencode")
+        answer, meta = a.ask("hello")
+        self.assertIn("turn 1: hello", answer)
+        self.assertNotEqual(answer, "hello")
+        self.assertNotIn("thinking", answer, "reasoning is not the answer")
+        self.assertNotIn("error", meta)
+
+    def test_tokens_add_up_across_turns(self):
+        a = self.backend().agent("opencode")
+        _, meta = a.ask("hello")
+        self.assertEqual(meta["tokens"], 115)
+        _, meta = a.ask("again")
+        self.assertEqual(meta["tokens"], 230)
+        self.assertEqual(a.turns, 2)
+
+    def test_one_session_holds_the_context_across_turns(self):
+        a = self.backend().agent("opencode")
+        a.ask("first")
+        session = a.session_id
+        answer, _ = a.ask("second")
+        self.assertEqual(a.session_id, session, "a new session per turn loses it")
+        self.assertIn("turn 2", answer)
+
+    def test_the_system_prompt_is_sent_once_not_on_every_turn(self):
+        a = self.backend().agent("opencode", instructions="ROLE-REVIEWER")
+        first, _ = a.ask("hello")
+        second, _ = a.ask("hello")
+        self.assertIn("ROLE-REVIEWER", first)
+        self.assertNotIn("ROLE-REVIEWER", second)
+
+    def test_the_model_reaches_the_session_it_creates(self):
+        b = self.backend()
+        a = b.agent("opencode", model="ai-lab/llama-gemma-26b")
+        a.ask("hello")
+        newest = a.messages()[0]
+        self.assertEqual(newest["model"],
+                         {"providerID": "ai-lab", "id": "llama-gemma-26b"})
+
+    def test_two_agents_get_separate_sessions_in_the_same_server(self):
+        b = self.backend()
+        one, two = b.agent("one"), b.agent("two")
+        one.ask("a")
+        one.ask("b")
+        answer, _ = two.ask("c")
+        self.assertNotEqual(one.session_id, two.session_id)
+        self.assertIn("turn 1", answer, "the second agent inherited a history")
+        self.assertEqual(one.status()["pids"], two.status()["pids"])
+
+    def test_a_turn_that_never_finishes_says_to_check_the_model(self):
+        """opencode fails silently on an undeclared model; say so out loud."""
+        a = self.backend().agent("opencode", model="ai-lab/llama-gemma-26b")
+        answer, meta = a.ask("SLOW down", timeout=1)
+        self.assertIsNone(answer)
+        self.assertIn("not declared in its config", meta["error"])
+        self.assertIn("ai-lab/llama-gemma-26b", meta["error"])
+
+    def test_a_reply_without_finish_is_not_taken_for_an_answer(self):
+        a = self.backend().agent("opencode")
+        answer, meta = a.ask("FAIL please", timeout=1)
+        self.assertIsNone(answer)
+        self.assertIn("no answer", meta["error"])
+
+    def test_compact_clears_the_providers_context(self):
+        a = self.backend().agent("opencode")
+        a.ask("hello")
+        self.assertTrue(a.compact())
+        self.assertEqual(a.messages(), [])
+
+    def test_a_session_can_be_adopted_and_a_bogus_one_cannot(self):
+        b = self.backend()
+        a = b.agent("opencode")
+        a.ask("hello")
+        left_behind = a.session_id
+
+        other = b.agent("later")
+        self.assertTrue(other.resume(left_behind))
+        self.assertFalse(other.resume("ses_nonsense"))
+        self.assertIsNone(other.session_id)
+
+    def test_status_reports_what_the_ui_puts_in_the_bar(self):
+        b = self.backend()
+        a = b.agent("opencode", model="ai-lab/llama-gemma-26b")
+        a.ask("hello")
+        status = a.status()
+        self.assertEqual(status["provider"], "opencode")
+        self.assertEqual(status["model"], "ai-lab/llama-gemma-26b")
+        self.assertEqual(status["turns"], 1)
+        self.assertEqual(status["tokens"], 115)
+        self.assertEqual(status["activity"], "")
+        self.assertTrue(status["alive"])
+        self.assertTrue(status["shared_process"])
+
+    def test_a_server_that_will_not_start_is_reported_not_hung(self):
+        b = OpencodeBackend(port=free_port(), binary="/nonexistent/opencode")
+        with self.assertRaises(OSError):
+            b.start()
 
 
 if __name__ == "__main__":
