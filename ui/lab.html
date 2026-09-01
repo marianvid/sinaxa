@@ -29,7 +29,6 @@
       <div class="title" id="title"></div>
       <div class="grow"></div>
     </header>
-    <div class="strip" id="strip"></div>
     <div class="thread" id="thread"></div>
     <div class="composer">
       <div class="cbox">
@@ -83,29 +82,30 @@ function renderTree(){
   if (!OPEN) return;
   const kids = document.createElement('div'); kids.className = 'sub';
 
-  if (subs().length){
-    const h = document.createElement('div'); h.className = 'grp'; h.textContent = 'Rooms';
-    kids.appendChild(h);
-    subs().forEach(r => {
-      const el = document.createElement('div');
-      el.className = 'room' + (r.key === ROOM ? ' on' : '');
-      el.innerHTML = `<span class="t">${r.name}</span>` + (r.busy ? '<span class="spin"></span>' : '')
-        + `<span class="avs">${r.seats.map(id => { const mem = memberOf(seatById(id));
-             return mem ? `<i style="background:${mem.color}"></i>` : ''; }).join('')}</span>`;
-      el.onclick = e => { e.stopPropagation(); ROOM = r.key; render(); };
-      el.oncontextmenu = e => menuFor(e, r.key);
-      kids.appendChild(el);
-    });
-  }
+  subs().forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'room' + (r.key === ROOM ? ' on' : '');
+    el.innerHTML = `<span class="t">${r.name}</span>` + (r.busy ? '<span class="spin"></span>' : '');
+    el.onclick = e => { e.stopPropagation(); ROOM = r.key; render(); };
+    el.oncontextmenu = e => menuFor(e, r.key);
+    kids.appendChild(el);
+  });
 
-  const h2 = document.createElement('div'); h2.className = 'grp'; h2.textContent = 'Seats';
-  kids.appendChild(h2);
+  /* Seats are the only place a member is shown: the occupant and their live
+     state ride on the seat row, so nothing is duplicated elsewhere. */
   S.seats.forEach(seat => {
     const mem = memberOf(seat);
+    const a = mem ? liveOf(mem.name) : {};
     const el = document.createElement('div');
     el.className = 'seat' + (mem ? '' : ' free');
+    el.title = mem
+      ? (mem.kind === 'human' ? 'you \u2014 lead of every room'
+         : `${a.provider || mem.model} \u00b7 ${a.model || ''}\nconversation ${a.conversation || '\u2014'}`
+           + `\n${a.turns || 0} turns \u00b7 ${a.tokens || 0} tokens`)
+      : 'no one is in this seat';
     el.innerHTML = `<span class="role">${seat.role}</span>`
-      + (seat.lead ? '<span class="star" title="lead">★</span>' : '')
+      + (seat.lead ? '<span class="star" title="lead">\u2605</span>' : '')
+      + (a.activity ? `<span class="act">${a.activity}\u2026</span>` : '')
       + (mem ? `<span class="who"><span class="sw" style="background:${mem.color}">${mem.initial}</span>${mem.name}</span>`
              : '<span class="who">empty</span>');
     kids.appendChild(el);
@@ -120,31 +120,6 @@ function renderTitle(){
   t.innerHTML = `<span class="proj">sinaxa</span><span class="dot">/</span>`
     + `<span class="sess">${mainRm().name}</span>`
     + (r.key === 'main' ? '' : `<span class="dot">/</span><span class="sub">${r.name}</span>`);
-}
-
-/* ------------------------------------------------------------------ seats */
-function renderStrip(){
-  const r = room(), st = document.getElementById('strip'); st.innerHTML = '';
-  r.seats.forEach(id => {
-    const seat = seatById(id), mem = memberOf(seat);
-    const a = mem ? liveOf(mem.name) : {};
-    const el = document.createElement('span');
-    el.className = 'pers' + (seat.lead ? ' is-lead' : '') + (mem ? '' : ' free')
-                 + (a.activity ? ' busy' : '');
-    el.title = mem
-      ? (mem.kind === 'human' ? 'you — lead of every room'
-         : `${a.provider || mem.model} · ${a.model || ''}\nconversation ${a.conversation || '—'}`
-           + `\n${a.turns || 0} turns · ${a.tokens || 0} tokens`)
-      : 'no one is in this seat';
-    el.innerHTML = `<span class="sw" style="background:${mem ? mem.color : ''}">${mem ? mem.initial : '·'}</span>`
-      + `<span>${mem ? mem.name : 'empty'}</span><span class="role">${seat.role}</span>`
-      + (seat.lead ? ' <span class="star">★</span>' : '')
-      + (a.activity ? ` <span class="act">${a.activity}…</span>` : '');
-    st.appendChild(el);
-  });
-  const sp = document.createElement('div'); sp.className = 'grow'; st.appendChild(sp);
-  const mg = document.createElement('button'); mg.className = 'chip'; mg.textContent = 'Manage team…';
-  mg.onclick = manageTeam; st.appendChild(mg);
 }
 
 /* ------------------------------------------------------------------ thread */
@@ -193,7 +168,7 @@ function renderStatus(){
     +`<b>${turns}</b> turns<span class="sep">·</span><b>${toks.toLocaleString()}</b> tokens`;
 }
 
-function render(){ renderTree(); renderTitle(); renderStrip(); renderThread(); renderStatus();
+function render(){ renderTree(); renderTitle(); renderThread(); renderStatus();
   document.getElementById('sendbtn').disabled = room().busy; }
 
 /* ------------------------------------------------------------------ menus */
@@ -277,24 +252,67 @@ function dlgReconstruct(r){
     () => toast('Reconstruct is not wired to anything yet'), 'Reconstruct');
 }
 
+/* The roles a software team actually has. The list is a convenience, not a
+   constraint — the point is that a seat is a role, and who fills it changes. */
+const ROLES = ["cto","tech lead","architect","backend","frontend","fullstack",
+               "devops","sre","qa","reviewer","security","data","designer",
+               "product owner","mobile","dba","docs"];
+
 function manageTeam(){
+  /* Edits stay in this local copy: nothing is wired to the server yet. */
+  const draft = S.seats.map(x => ({...x}));
   const people = Object.entries(S.members);
-  const rows = S.seats.map(seat => `
-    <div class="seatrow">
-      <span class="role">${seat.role}</span>
-      <select data-seat="${seat.id}">
-        <option value="">— empty —</option>
-        ${people.map(([k,m]) => `<option value="${k}" ${seat.occupant===k?'selected':''}>${m.name}</option>`).join('')}
+
+  const rowHtml = (seat, i) => `
+    <div class="seatrow" data-i="${i}">
+      <select class="rolesel" data-i="${i}">
+        ${ROLES.concat(ROLES.includes(seat.role) ? [] : [seat.role])
+             .map(r => `<option ${r === seat.role ? 'selected' : ''}>${r}</option>`).join('')}
       </select>
-      <span class="star" title="lead">${seat.lead ? '★' : ''}</span>
-    </div>`).join('');
-  modal(`<h3>Manage team</h3>
+      <select class="whosel" data-i="${i}">
+        <option value="">— empty —</option>
+        ${people.map(([k, m]) =>
+          `<option value="${k}" ${seat.occupant === k ? 'selected' : ''}>${m.name}</option>`).join('')}
+      </select>
+      <span class="star" title="${seat.lead ? 'lead' : 'make lead'}"
+            data-lead="${i}">${seat.lead ? '★' : '☆'}</span>
+      <button class="x" data-del="${i}" title="remove this role">✕</button>
+    </div>`;
+
+  const scrim = modal(`<h3>Manage team</h3>
     <div class="lead">Seats belong to the session. A seat is a role; who fills it
-      can change without the seat losing its place.</div>
-    <div class="seatlist">${rows}</div>
-    <div class="note">Not wired yet. Adding a seat, and moving the lead star to
-      someone else, come with the same change.</div>`,
+      can change without the seat losing its place in the rooms.</div>
+    <div class="seatlist"></div>
+    <div class="addrole">+ Add role</div>
+    <div class="note">Not wired yet — nothing here reaches the agents. Removing a
+      role would also decide what happens to its conversation, and that is still
+      open.</div>`,
     () => toast('Manage team is not wired to anything yet'), 'Save');
+
+  const list = scrim.querySelector('.seatlist');
+
+  function draw(){
+    list.innerHTML = draft.map(rowHtml).join('');
+    list.querySelectorAll('.rolesel').forEach(el =>
+      el.onchange = () => { draft[+el.dataset.i].role = el.value; });
+    list.querySelectorAll('.whosel').forEach(el =>
+      el.onchange = () => { draft[+el.dataset.i].occupant = el.value || null; });
+    list.querySelectorAll('[data-lead]').forEach(el =>
+      el.onclick = () => { const i = +el.dataset.lead;
+        draft.forEach((d, k) => d.lead = (k === i)); draw(); });
+    list.querySelectorAll('[data-del]').forEach(el =>
+      el.onclick = () => { draft.splice(+el.dataset.del, 1);
+        if (draft.length && !draft.some(d => d.lead)) draft[0].lead = true;
+        draw(); });
+  }
+
+  scrim.querySelector('.addrole').onclick = () => {
+    const free = ROLES.find(r => !draft.some(d => d.role === r)) || "role";
+    draft.push({id: 'new' + draft.length, role: free, occupant: null, lead: false});
+    draw();
+  };
+
+  draw();
 }
 
 /* ------------------------------------------------------------------ io */

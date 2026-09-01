@@ -240,10 +240,17 @@ textarea{width:100%;background:none;border:0;color:var(--fg);resize:none;font:in
 .seatlist{display:flex;flex-direction:column;gap:6px}
 .seatrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);
   border-radius:8px;background:var(--bg3)}
-.seatrow .role{flex:0 0 108px;font-size:12px;font-weight:600}
 .seatrow select{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:6px;
   color:var(--fg);font:inherit;font-size:12px;padding:4px 7px;outline:none}
-.seatrow .star{flex:none}
+.seatrow .star{flex:none;cursor:pointer;width:16px;text-align:center}
+.seatrow .star:hover{color:var(--lead)}
+.seatrow .x{flex:none;background:none;border:0;color:var(--dim2);font:inherit;
+  font-size:12px;cursor:pointer;padding:2px 4px;border-radius:4px}
+.seatrow .x:hover{color:var(--red);background:color-mix(in srgb,var(--red) 12%,transparent)}
+.seatrow .rolesel{flex:0 0 122px}
+.addrole{margin-top:8px;text-align:center;color:var(--dim2);border:1px dashed var(--line);
+  border-radius:8px;padding:6px;cursor:pointer;font-size:12px}
+.addrole:hover{color:var(--fg);border-color:var(--dim2)}
 .pending{font-size:11px;color:var(--lead);background:color-mix(in srgb,var(--lead) 9%,transparent);
   border:1px solid color-mix(in srgb,var(--lead) 28%,transparent);border-radius:7px;
   padding:8px 10px;line-height:1.5}
