@@ -58,6 +58,7 @@ class ClaudeBackend:
 
 class ClaudeAgent:
     provider = "claude-cli"
+    accepts_images = True          # inline, as base64 blocks
 
     def __init__(self, backend, name, model=None, instructions=None,
                  effort=None):
@@ -71,16 +72,16 @@ class ClaudeAgent:
                                      effort=effort)
         self._lock = threading.Lock()
 
-    def ask(self, text, timeout=600):
+    def ask(self, text, timeout=600, images=()):
         with self._lock:
             try:
-                return self.session.ask(text, timeout=timeout)
+                return self.session.ask(text, timeout=timeout, images=images)
             except (SessionDied, TurnTimedOut) as exc:
                 # the process is gone; --resume brings the context back
                 self.session.activity = ""
                 try:
                     self.session.start(resume=bool(self.session.session_id))
-                    return self.session.ask(text, timeout=timeout)
+                    return self.session.ask(text, timeout=timeout, images=images)
                 except Exception as exc2:
                     return None, {"error": "%s (and the retry failed: %s)"
                                            % (exc, exc2)}

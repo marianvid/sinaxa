@@ -13,6 +13,7 @@ source of truth; if the id is gone we mint a new one and lose nothing
 but the model's warm context.
 """
 
+import base64
 import json
 import os
 import queue
@@ -22,6 +23,20 @@ import time
 import uuid
 
 DEFAULT_TIMEOUT = 300
+
+
+MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+         ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def image_block(path):
+    """One image, the way the Messages API wants it."""
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    kind = MEDIA.get(os.path.splitext(path)[1].lower(), "image/png")
+    return {"type": "image",
+            "source": {"type": "base64", "media_type": kind,
+                       "data": base64.b64encode(blob).decode()}}
 
 
 def close(stream):
@@ -181,8 +196,12 @@ class ClaudeSession:
         return "\n".join(self._stderr[-n:])
 
     # ------------------------------------------------------------ one turn
-    def ask(self, text, timeout=DEFAULT_TIMEOUT):
-        """Send one message, wait for the result event. Returns (text, meta)."""
+    def ask(self, text, timeout=DEFAULT_TIMEOUT, images=()):
+        """Send one message, wait for the result event. Returns (text, meta).
+
+        `images` are paths. Claude takes them inline, as base64 blocks in the
+        same envelope, so nothing on disk needs to outlive the turn.
+        """
         with self._lock:
             if not self.alive:
                 self.start(resume=bool(self.session_id) and self.turns > 0)
@@ -190,8 +209,10 @@ class ClaudeSession:
             while not self._events.empty():           # drop anything stale
                 self._events.get_nowait()
 
+            content = [image_block(path) for path in images]
+            content.append({"type": "text", "text": text})
             envelope = {"type": "user", "message": {
-                "role": "user", "content": [{"type": "text", "text": text}]}}
+                "role": "user", "content": content}}
             try:
                 self._proc.stdin.write(json.dumps(envelope) + "\n")
                 self._proc.stdin.flush()

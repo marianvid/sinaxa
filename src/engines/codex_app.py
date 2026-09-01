@@ -176,6 +176,7 @@ class CodexAppBackend:
 
 class CodexAppAgent:
     provider = "codex-cli"
+    accepts_images = True          # as a path on disk, never inline
 
     def __init__(self, backend, name, model=None, instructions=None):
         self.backend = backend
@@ -249,7 +250,10 @@ class CodexAppAgent:
         self.backend._threads[thread_id] = self
         return True
 
-    def ask(self, text, timeout=TURN_TIMEOUT):
+    def ask(self, text, timeout=TURN_TIMEOUT, images=()):
+        """`images` are paths, and paths are the only form codex takes: a
+        data URL and a bare path under type "image" are both refused with
+        "missing field `url`". Measured, see docs/design/05-images.md."""
         with self._lock:
             self.backend.start()
             started = time.time()
@@ -266,10 +270,13 @@ class CodexAppAgent:
             if self.instructions and self.turns == 0:
                 prompt = self.instructions + "\n\n---\n\n" + text
 
+            items = [{"type": "localImage", "path": os.path.abspath(path)}
+                     for path in images]
+            items.append({"type": "text", "text": prompt})
             reply = self.backend._request("turn/start", {
                 "threadId": self.thread_id,
                 "clientUserMessageId": "%s-%d" % (self.name, self.turns + 1),
-                "input": [{"type": "text", "text": prompt}]}, timeout)
+                "input": items}, timeout)
             if "error" in reply:
                 self.activity = ""
                 return None, {"error": json.dumps(reply["error"])[:400]}

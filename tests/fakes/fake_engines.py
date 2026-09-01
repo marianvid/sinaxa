@@ -14,11 +14,14 @@ class FakeAgent:
         self.name = name
         self.instructions = instructions
         self.heard = []             # every body of text delivered to this seat
+        self.saw = []               # the image paths handed over, per turn
         self.turns = 0
         self.stopped = False
+        self.accepts_images = name not in engines.blind
 
-    def ask(self, text, timeout=None):
+    def ask(self, text, timeout=None, images=()):
         self.heard.append(text)
+        self.saw.append(list(images))
         self.turns += 1
         answer = self.engines.answers.get(
             (self.name, self.turns),
@@ -43,11 +46,13 @@ class FakeEngines:
     """Stands in for src.engines.Engines.
 
     `answers` maps a seat name -- or a (name, turn) pair -- to what it should
-    reply. A callable receives the delivered text.
+    reply. A callable receives the delivered text. `blind` names the seats
+    whose engine cannot carry an image.
     """
 
-    def __init__(self, answers=None):
+    def __init__(self, answers=None, blind=()):
         self.answers = dict(answers or {})
+        self.blind = set(blind)     # seat names whose engine cannot see
         self.agents = {}            # name -> the most recent agent
         self.history = []           # every agent ever made, stops included
 
@@ -70,6 +75,11 @@ class FakeEngines:
     # ------------------------------------------------------------ reading
     def heard_by(self, name):
         return self.agents[name].heard if name in self.agents else []
+
+    def seen_by(self, name):
+        """Every image path handed to this seat, across all its turns."""
+        return [p for turn in (self.agents[name].saw if name in self.agents
+                               else []) for p in turn]
 
     def everything_heard_by(self, name):
         return "\n".join(self.heard_by(name))

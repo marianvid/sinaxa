@@ -21,6 +21,7 @@ docs/design/03-providers.md. Two of them shape the code below:
     is "the providers answer", never "the port accepts".
 """
 
+import base64
 import json
 import os
 import subprocess
@@ -161,6 +162,26 @@ class OpencodeBackend:
         return OpencodeAgent(self, name, model, instructions)
 
 
+MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+         ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def data_uri(path):
+    """One attachment, the only way opencode 1.18.15 actually reads it.
+
+    A path -- bare, or as a file:// uri -- is accepted by the endpoint and
+    then fails inside opencode with "OpenAI Chat media must contain valid
+    base64", which reaches you as an answer that never arrives. A data uri
+    goes through: with one, the image reaches the provider, and a provider
+    that cannot read images says so out loud.
+    """
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    kind = MEDIA.get(os.path.splitext(path)[1].lower(), "image/png")
+    return {"uri": "data:%s;base64,%s" % (kind, base64.b64encode(blob).decode()),
+            "name": os.path.basename(path)}
+
+
 def model_ref(model):
     """"ai-lab/llama-qwen36-35b" -> {"providerID": ..., "id": ...}"""
     if not model:
@@ -175,6 +196,7 @@ def model_ref(model):
 
 class OpencodeAgent:
     provider = "opencode"
+    accepts_images = True          # as file:// uris; the model decides
 
     def __init__(self, backend, name, model=None, instructions=None):
         self.backend = backend
@@ -237,7 +259,10 @@ class OpencodeAgent:
         return True
 
     # ---------------------------------------------------------- one turn
-    def ask(self, text, timeout=TURN_TIMEOUT):
+    def ask(self, text, timeout=TURN_TIMEOUT, images=()):
+        """`images` are paths, attached as file:// uris. Whether they are
+        read at all is the model's business, not opencode's -- a model
+        without vision answers as if nothing were attached."""
         with self._lock:
             started = time.time()
             self.activity = "starting"
@@ -253,9 +278,12 @@ class OpencodeAgent:
                 prompt = self.instructions + "\n\n---\n\n" + text
 
             before = len(self.messages())
+            payload = {"text": prompt}
+            if images:
+                payload["files"] = [data_uri(path) for path in images]
             try:
                 self.backend.call("/api/session/%s/prompt" % self.session_id,
-                                  {"prompt": {"text": prompt}}, timeout=60)
+                                  {"prompt": payload}, timeout=60)
             except urllib.error.HTTPError as exc:
                 self.activity = ""
                 return None, {"error": "prompt refused: %s" % exc}

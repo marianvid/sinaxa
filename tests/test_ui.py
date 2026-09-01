@@ -78,7 +78,7 @@ JS = code_only(JS_RAW)
 
 BUILTINS = {
     "JSON", "Object", "Set", "Map", "Date", "String", "Number", "Math", "Array",
-    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams", "Event",
+    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams", "Event", "FileReader",
 }
 
 

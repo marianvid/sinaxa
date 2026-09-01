@@ -16,13 +16,16 @@ history. Every message carries a session-wide `seq`, so the rooms of one
 session can be merged back into the single order in which things were said.
 """
 
+import hashlib
 import json
 import os
+import re
 import shutil
 
 from .model import Member, Project, SeatDef, Session, Sinaxa
 
 REMOVED = ".removed"      # a project taken out of the picture, kept on disk
+IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{2,5}$")
 
 
 class Store:
@@ -119,6 +122,42 @@ class Store:
         path = self.room_path(project, session, room)
         if os.path.exists(path):
             os.remove(path)
+
+    # ------------------------------------------------------------ images
+    # An image pasted into a room is part of the transcript, so it lives
+    # beside it. Named by the hash of its own bytes: paste the same
+    # screenshot twice and it is stored once. codex will not take an image
+    # any other way than as a file on disk, so a file is what everything
+    # gets.
+    def images_dir(self, project, session):
+        return os.path.join(self.projects_dir, project.id, "sessions",
+                            session.id, "files")
+
+    def save_image(self, project, session, blob, suffix=".png"):
+        name = hashlib.sha256(blob).hexdigest()[:16] + suffix
+        folder = self.images_dir(project, session)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        if not os.path.exists(path):
+            with open(path, "wb") as fh:
+                fh.write(blob)
+        return name
+
+    def image_path(self, project, session, name):
+        """The path of one stored image, or None. The name is checked rather
+        than trusted: it arrives over HTTP."""
+        if not IMAGE_NAME.match(name or ""):
+            return None
+        path = os.path.join(self.images_dir(project, session), name)
+        return path if os.path.exists(path) else None
+
+    def image_paths(self, project, session, message):
+        found = []
+        for name in message.get("images") or []:
+            path = self.image_path(project, session, name)
+            if path:
+                found.append(path)
+        return found
 
     # ------------------------------------------------------- transcripts
     def room_path(self, project, session, room):

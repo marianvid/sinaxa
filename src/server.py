@@ -3,7 +3,9 @@
     GET    /                                the page
     GET    /api/state?project=&session=&room=
     GET    /api/models?engine=
-    POST   /api/say            {project, session, room, text}
+    GET    /api/files/<name>?project=&session=      a pasted image
+    POST   /api/say            {project, session, room, text,
+                                images: [{type, data(base64)}]}
 
     POST   /api/projects       {name, cwd}
     DELETE /api/projects/<id>?erase=1
@@ -32,6 +34,7 @@
 """
 
 import argparse
+import base64
 import json
 import os
 import signal
@@ -48,6 +51,33 @@ ROOT = os.path.dirname(HERE)
 UI = os.path.join(ROOT, "ui")
 PAGE = os.path.join(UI, "sinaxa.html")
 STYLE = os.path.join(UI, "sinaxa.css")
+
+
+MIME = {".png": "image/png", ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg", ".gif": "image/gif",
+        ".webp": "image/webp"}
+SUFFIX = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+          "image/webp": ".webp"}
+MAX_IMAGE = 24 * 1024 * 1024      # a retina screenshot, with room to spare
+
+
+def decode_images(items):
+    """[{type, data}] as the page sends them -> [(bytes, suffix)].
+
+    Nothing is resized: a screenshot is pasted to be read, and shrinking it
+    to save tokens is the kind of help that loses the line of code you were
+    pointing at.
+    """
+    out = []
+    for item in items or []:
+        blob = base64.b64decode(item.get("data") or "")
+        if not blob:
+            continue
+        if len(blob) > MAX_IMAGE:
+            raise ModelError("that image is %.1f MB; the limit is %d MB"
+                             % (len(blob) / 1048576.0, MAX_IMAGE // 1048576))
+        out.append((blob, SUFFIX.get(item.get("type"), ".png")))
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -111,6 +141,15 @@ class Handler(BaseHTTPRequestHandler):
             engine = self.query.get("engine")
             return self.guarded(lambda: {"models":
                                          self.app.models_for(engine)})
+        if path.startswith("/api/files/"):
+            query = self.query
+            name = path[len("/api/files/"):]
+            found = self.app.image(query.get("project"), query.get("session"),
+                                   name)
+            if not found:
+                return self.send(404, {"error": "no such image"})
+            return self.send_file(found, MIME.get(
+                os.path.splitext(found)[1].lower(), "application/octet-stream"))
         return self.send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -143,7 +182,8 @@ class Handler(BaseHTTPRequestHandler):
         app = self.app
         if parts[:2] == ["api", "say"]:
             project, session = self.where(body)
-            message = app.say(project, session, body["room"], body["text"])
+            message = app.say(project, session, body["room"], body["text"],
+                              images=decode_images(body.get("images")))
             return {"ok": True, "message": message}
 
         if parts[:2] == ["api", "projects"]:
@@ -279,11 +319,14 @@ def main():
     # running atexit -- which would leave every agent orphaned. Turning the
     # signal into an ordinary exit is what makes the shutdown path the same
     # whether you press Ctrl-C or stop the service.
+    #
+    # SIGHUP is deliberately left alone. nohup ignores it so that a server
+    # outlives the terminal that started it; handling it here would undo
+    # that and take the server down with the shell.
     def leave(signum, frame):
         raise SystemExit(0)
 
-    for sig in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, leave)
+    signal.signal(signal.SIGTERM, leave)
 
     print("sinaxa     ->  http://%s:%d" % (HOST, args.port))
     print("state      ->  %s" % args.state)

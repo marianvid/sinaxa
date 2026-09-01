@@ -71,6 +71,21 @@ class Broadcast(Turns):
         authors = [m["author_name"] for m in self.transcript()]
         self.assertEqual(authors, ["Marian", "Claude", "Codex"])
 
+    def test_what_a_turn_cost_is_written_down_with_the_answer(self):
+        """It used to be hung on the message after it had been written, so
+        it lived until the next reload and no longer."""
+        self.say("status please")
+        answers = [m for m in self.transcript() if m["author"] != "lead"]
+        for answer in answers:
+            self.assertIn("tokens", answer.get("meta", {}),
+                          "the cost of the turn was lost on the way to disk")
+
+        again = App(self.root, cwd=self.root, engines=FakeEngines())
+        reloaded = again.messages(self.project.id, self.session.id,
+                                  self.room.id)
+        self.assertEqual([m.get("meta") for m in reloaded],
+                         [m.get("meta") for m in self.transcript()])
+
     def test_the_messages_are_numbered_in_the_order_they_were_said(self):
         self.say("one")
         self.say("two")

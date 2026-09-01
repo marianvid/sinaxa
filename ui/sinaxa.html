@@ -33,7 +33,8 @@
     <div class="thread" id="thread"></div>
     <div class="composer" id="composer">
       <div class="cbox">
-        <textarea id="input" placeholder="Message the room…"></textarea>
+        <div class="pasted" id="pasted"></div>
+        <textarea id="input" placeholder="Message the room…   paste an image to show it"></textarea>
         <div class="ctools"><div class="grow"></div><button class="send" id="sendbtn">Send</button></div>
       </div>
     </div>
@@ -51,6 +52,7 @@ let OPEN = true;           /* is the session expanded in the sidebar */
 let SEL = new Set();       /* seat ids picked with cmd/ctrl-click */
 let STICK = true;          /* was the thread at the bottom before this render */
 let POLL = null, SENDING = false;
+let PASTED = [];           /* images pasted, not yet sent */
 
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -224,15 +226,37 @@ function renderThread(){
     const tags = (mem && mem.model ? `<span class="tag">${esc(mem.model)}</span>` : '')
       + (meta.elapsed !== undefined ? `<span class="tag">${meta.elapsed}s</span>` : '')
       + (meta.tokens ? `<span class="tag">${meta.tokens} tok</span>` : '')
+      + (meta.blind ? `<span class="blind">did not see ${meta.blind} image${
+            meta.blind === 1 ? '' : 's'}</span>` : '')
       + (lead ? '<span class="lb">★ lead</span>' : '');
     return `<div class="msg"><div class="av" style="background:${colour}">${
         esc(initial({name: m.author_name}))}</div><div>
       <div class="who"><b>${esc(m.author_name)}</b>${tags}<span class="time">${hhmm(m.ts)}</span></div>
-      <div class="bd">${fmt(m.text)}</div></div></div>`;
+      <div class="bd">${fmt(m.text)}</div>${shots(m)}</div></div>`;
   }).join('');
   /* The scroll is applied at the end of render(), not here: the status bar
      is filled after this and takes height away from the thread, so scrolling
      now would land short by exactly that much. */
+}
+
+/* An image lives beside the transcript; the page asks the server for it by
+   name rather than carrying it around in the state payload. */
+function shots(m){
+  if (!(m.images || []).length) return '';
+  return '<div class="shots">' + m.images.map(n =>
+    `<a href="/api/files/${n}?project=${PROJECT}&session=${SESSION}" target="_blank">
+       <img src="/api/files/${n}?project=${PROJECT}&session=${SESSION}" alt=""></a>`
+  ).join('') + '</div>';
+}
+
+function renderPasted(){
+  const box = el('pasted');
+  box.innerHTML = PASTED.map((p, i) =>
+    `<span class="shot"><img src="${p.url}" alt=""><u data-drop="${i}"
+       title="remove">×</u></span>`).join('');
+  box.style.display = PASTED.length ? '' : 'none';
+  box.querySelectorAll('[data-drop]').forEach(x =>
+    x.onclick = () => { PASTED.splice(+x.dataset.drop, 1); renderPasted(); });
 }
 
 /* ------------------------------------------------------------------ views */
@@ -703,11 +727,13 @@ async function refresh(){
 
 async function send(){
   const box = el('input'), text = box.value.trim();
-  if (!text || SENDING) return;
+  if ((!text && !PASTED.length) || SENDING) return;
   box.value = ''; box.style.height = '38px';
   SENDING = true; el('sendbtn').disabled = true;
+  const images = PASTED.map(p => ({type: p.type, data: p.data}));
+  PASTED = []; renderPasted();
   try { await api('POST', '/api/say',
-                  {project: PROJECT, session: SESSION, room: ROOM, text}); }
+                  {project: PROJECT, session: SESSION, room: ROOM, text, images}); }
   catch (exc) { toast(exc.message); box.value = text; }
   SENDING = false;
   refresh();
@@ -721,6 +747,34 @@ let TT; function toast(t){ clearTimeout(TT);
 el('addproj').onclick = addProject;
 el('managebtn').onclick = manageTeam;
 el('sendbtn').onclick = send;
+/* Paste an image and it waits above the box until you send it. Files
+   dragged in are the same thing by another route. */
+async function takeImages(files){
+  for (const file of files){
+    if (!file || !/^image\//.test(file.type)) continue;
+    const data = await new Promise(done => {
+      const reader = new FileReader();
+      reader.onload = () => done(String(reader.result).split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+    PASTED.push({type: file.type, data,
+                 url: 'data:' + file.type + ';base64,' + data});
+  }
+  renderPasted();
+}
+
+el('input').addEventListener('paste', e => {
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (!files.length) return;                 /* plain text: let it through */
+  e.preventDefault();
+  takeImages(files);
+});
+el('input').addEventListener('dragover', e => e.preventDefault());
+el('input').addEventListener('drop', e => {
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  e.preventDefault(); takeImages([...e.dataTransfer.files]);
+});
+
 el('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
 el('input').addEventListener('input', e => {

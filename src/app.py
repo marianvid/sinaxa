@@ -205,9 +205,19 @@ class App:
         return room
 
     # ----------------------------------------------------------- talking
-    def say(self, project_id, session_id, room_id, text):
+    def say(self, project_id, session_id, room_id, text, images=None):
+        """`images` are (bytes, suffix) pairs pasted into the composer. They
+        are stored beside the transcript before the turn runs, because codex
+        will only take an image as a file on disk and every engine may be
+        asked for it again on a later catch-up."""
         project, session, room = self.locate(project_id, session_id, room_id)
-        return self.talk(project, session).say(room, text)
+        stored = [self.store.save_image(project, session, blob, suffix)
+                  for blob, suffix in (images or [])]
+        return self.talk(project, session).say(room, text, images=stored)
+
+    def image(self, project_id, session_id, name):
+        project, session, _ = self.locate(project_id, session_id)
+        return self.store.image_path(project, session, name)
 
     def messages(self, project_id, session_id, room_id):
         project, session, room = self.locate(project_id, session_id, room_id)

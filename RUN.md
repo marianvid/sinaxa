@@ -34,7 +34,8 @@ Nothing is hardcoded, so a fresh install is empty and the order matters:
    for every role that has a default member, and a room each.
 
 Then write in a room. Naming nobody asks everyone in it; `@Name` asks only
-them.
+them. Paste a screenshot into the box and it goes with the message --
+docs/design/05-images.md says what each engine does with one.
 
 ## Tests
 
@@ -42,7 +43,7 @@ them.
 ./sinaxa test
 ```
 
-165 of them, and none needs a subscription: the engine tests run the real
+193 of them, and none needs a subscription: the engine tests run the real
 adapters against fake binaries in `tests/fakes/`, and the model, context and
 API tests run against a fake engine that starts nothing.
 

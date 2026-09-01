@@ -143,10 +143,22 @@ class Talk:
         return was_running
 
     # ------------------------------------------------------------ speaking
-    def line(self, message):
-        return "[%s - %s] %s" % (message.get("room_name", "?"),
-                                 message.get("author_name", "?"),
-                                 message.get("text", ""))
+    def line(self, message, images=0, carried=True):
+        """One message as a seat reads it.
+
+        The room is named because a seat reads several. An image is noted in
+        the text either way -- attached, so the model knows the picture
+        belongs to this message and not the next; withheld, so it knows there
+        was one and that it is not being hidden from it by accident.
+        """
+        note = ""
+        if images:
+            note = ("  [%d image%s attached]" if carried
+                    else "  [%d image%s here, which you cannot read]") % (
+                images, "" if images == 1 else "s")
+        return "[%s - %s] %s%s" % (message.get("room_name", "?"),
+                                   message.get("author_name", "?"),
+                                   message.get("text", ""), note)
 
     def catch_up(self, seat, upto_seq):
         """What this seat has not been told yet, up to but excluding a
@@ -157,17 +169,43 @@ class Talk:
         return unseen
 
     def deliver(self, seat, message):
-        """Ask one seat, giving it whatever it missed first."""
+        """Ask one seat, giving it whatever it missed first.
+
+        Images go with the messages they were pasted into, and they go again
+        on a catch-up: an agent that was silent for three turns has not seen
+        them yet, and a picture referred to but never shown is worse than no
+        picture at all.
+
+        A seat whose engine cannot carry an image is not given one. It is
+        told that one was there, so that it does not answer a question about
+        a picture as though the picture were missing by accident.
+        """
         agent = self.start(seat)
         if agent is None:
             return None, {"error": self.conversation(seat).trouble}
         conversation = self.conversation(seat)
-        missed = self.catch_up(seat, message.get("seq", 0))
-        body = "\n".join(self.line(m) for m in missed + [message])
-        answer, meta = agent.ask(body, timeout=TURN_TIMEOUT)
+        carried = self.can_see(seat)
+
+        lines, images, withheld = [], [], 0
+        for one in self.catch_up(seat, message.get("seq", 0)) + [message]:
+            paths = self.store.image_paths(self.project, self.session, one)
+            lines.append(self.line(one, len(paths), carried))
+            if carried:
+                images.extend(paths)
+            else:
+                withheld += len(paths)
+
+        answer, meta = agent.ask("\n".join(lines), timeout=TURN_TIMEOUT,
+                                 images=images)
         conversation.delivered = max(conversation.delivered,
                                      message.get("seq", 0))
+        if withheld and isinstance(meta, dict):
+            meta["blind"] = withheld
         return answer, meta
+
+    def can_see(self, seat):
+        agent = self.conversation(seat).agent
+        return bool(getattr(agent, "accepts_images", False))
 
     def speakers_for(self, room, text, author_seat_id):
         """Named with @ -> only them. Nobody named -> every seat in the room.
@@ -180,8 +218,14 @@ class Talk:
         return named or seats
 
     # --------------------------------------------------------------- turn
-    def post(self, room, author_seat_id, author_name, text, kind=None):
-        """Write one message into a room and give it a place in the order."""
+    def post(self, room, author_seat_id, author_name, text, kind=None,
+             images=None, meta=None):
+        """Write one message into a room and give it a place in the order.
+
+        Everything the message carries is passed in, because the line is
+        written to disk here: anything hung on the returned dict afterwards
+        exists only until the next reload.
+        """
         self.session.seq += 1
         message = {"seq": self.session.seq, "room": room.id,
                    "room_name": room.name, "author": author_seat_id or "lead",
@@ -189,6 +233,10 @@ class Talk:
                    "ts": time.time()}
         if kind:
             message["kind"] = kind
+        if images:
+            message["images"] = list(images)
+        if meta:
+            message["meta"] = meta
         self.store.append(self.project, self.session, room, message)
         self.store.save_session(self.project, self.session)
         return message
@@ -218,8 +266,7 @@ class Talk:
                           kind="error")
                 continue
             reply = self.post(room, seat.id, self.sinaxa.seat_name(seat),
-                              answer)
-            reply["meta"] = meta
+                              answer, meta=meta)
             if hops > 0:
                 others = [s for s in
                           (self.session.seat(sid) for sid in room.seats)
@@ -231,9 +278,10 @@ class Talk:
             self.run_turn(room, reply, reply["author"], hops - 1,
                           targets=[target])
 
-    def say(self, room, text):
+    def say(self, room, text, images=None):
         """The lead writes into a room."""
         lead = self.sinaxa.lead
-        message = self.post(room, None, lead.name if lead else "lead", text)
+        message = self.post(room, None, lead.name if lead else "lead", text,
+                            images=images)
         self.run_turn(room, message, None)
         return message
