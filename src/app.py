@@ -250,7 +250,35 @@ class App:
                         for r in session.rooms]
         out["messages"] = self.store.messages(project, session, room)
         out["busy"] = sorted(talk.busy)
+        out["status"] = self._status(talk, session)
         return out
+
+    def _status(self, talk, session):
+        """What the bar along the bottom says: what is alive, and what it
+        costs. A seat that has never spoken has no process and no cost, and
+        should read as absent rather than as zero."""
+        agents, processes, rss = [], set(), 0
+        for seat in session.seats:
+            conversation = talk.conversations.get(seat.id)
+            if not (conversation and conversation.agent):
+                continue
+            live = conversation.agent.status()
+            live["seat"] = seat.id
+            live["name"] = self.sinaxa.seat_name(seat)
+            live["role"] = self.sinaxa.seat_def(seat.seat_def).role
+            agents.append(live)
+            for pid in live.get("pids") or []:
+                processes.add(pid)
+            rss += live.get("rss_kb") or 0
+        return {
+            "agents": agents,
+            "processes": sorted(processes),
+            "total_rss_mb": round(rss / 1024.0) if rss else None,
+            "engines": self.engines.status(),
+            "seats": len(session.seats),
+            "turns": sum(a.get("turns") or 0 for a in agents),
+            "tokens": sum(a.get("tokens") or 0 for a in agents),
+        }
 
     def _seat_state(self, talk, session, seat):
         definition = self.sinaxa.seat_def(seat.seat_def)

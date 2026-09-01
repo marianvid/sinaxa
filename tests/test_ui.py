@@ -109,7 +109,7 @@ class Identifiers(unittest.TestCase):
             "if", "for", "while", "switch", "catch", "return", "typeof", "await",
             "fetch", "parseInt", "parseFloat", "alert", "prompt", "confirm",
             "setTimeout", "setInterval", "clearTimeout", "requestAnimationFrame",
-            "isNaN", "of", "in", "new",
+            "isNaN", "of", "in", "new", "var",
         }
         missing = sorted(c for c in called if c not in known)
         self.assertEqual(missing, [], "called but never defined: %s" % missing)
@@ -141,21 +141,18 @@ class Saving(unittest.TestCase):
     """
 
     def test_every_edit_form_tracks_whether_anything_changed(self):
-        forms = re.findall(r"(?:const \w+ = )?modal\(", JS)
-        tracked = JS.count("track: true")
-        self.assertEqual(tracked, 5,
-                         "an edit form lost its change tracking: %d tracked "
-                         "of %d modals" % (tracked, len(forms)))
+        """One watch() per form that saves: members, roles, projects,
+        sessions, rooms -- and one per seat row in Manage team."""
+        self.assertGreaterEqual(JS.count("watch("), 6)
 
     def test_each_seat_row_has_its_own_guard(self):
-        # against the raw source: these are selectors, and code_only() strips
-        # the strings they live in
-        self.assertIn("card.querySelectorAll('tr[data-seat]')", JS_RAW)
-        self.assertIn("watch(row,", JS)
+        self.assertIn("scrim.querySelectorAll('[data-seat]')", JS_RAW)
+        self.assertIn("watch(row, save,", JS)
 
     def test_a_destructive_confirmation_is_not_gated_on_a_change(self):
-        """Removing without ticking the box is a legitimate answer."""
-        self.assertEqual(JS_RAW.count("okLabel: 'Remove'"), 3)
+        """Removing without ticking the box is a legitimate answer, so those
+        dialogs keep a live button: modal(..., 'Remove', true)."""
+        self.assertEqual(JS_RAW.count("'Remove', true)"), 3)
 
     def test_the_prompt_box_shows_the_prompt_in_force(self):
         self.assertIn("prompt_effective", HTML)
@@ -180,7 +177,7 @@ class Theme(unittest.TestCase):
                          "missing from the light theme: %s" % only_dark)
 
     def test_no_raw_colour_outside_the_palette(self):
-        body = CSS[CSS.index("* { box-sizing"):]
+        body = CSS[CSS.index("*{box-sizing"):]
         raw = re.findall(r":\s*(#[0-9a-fA-F]{3,8})\b", body)
         self.assertEqual(raw, [], "hardcoded colours outside :root: %s" % raw)
 

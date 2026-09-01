@@ -27,6 +27,12 @@ import uuid
 HUMAN, AGENT = "human", "agent"
 ALL, PRIVATE, CUSTOM = "all", "private", "custom"
 
+# A member is recognised by its colour everywhere it appears -- the avatar in
+# the thread, the swatch in the sidebar, the pill in the header. Handed out in
+# order so that two members are never the same colour by accident.
+PALETTE = ["#2f6fd0", "#c96442", "#3fbf7f", "#7c6cf0", "#e0a53f", "#38a9a2",
+           "#d05f9c", "#8a9a3b"]
+
 
 def new_id(prefix):
     return "%s_%s" % (prefix, uuid.uuid4().hex[:12])
@@ -358,6 +364,10 @@ class Sinaxa:
                              % self.lead.name)
         if any(m.name.lower() == member.name.lower() for m in self.members):
             raise ModelError("a member called %s already exists" % member.name)
+        if not member.colour:
+            taken = {m.colour for m in self.members}
+            free = [c for c in PALETTE if c not in taken]
+            member.colour = (free or PALETTE)[0]
         self.members.append(member)
         return member
 

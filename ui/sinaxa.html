@@ -2,57 +2,678 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>sinaxa</title>
 <link rel="stylesheet" href="/sinaxa.css">
 </head>
 <body>
+<div class="app">
 
-<nav id="rail">
-  <div class="logo" title="sinaxa">Σ</div>
-  <button class="tab on" data-view="rooms" title="Projects">▤</button>
-  <button class="tab" data-view="members" title="Members">◍</button>
-  <button class="tab" data-view="seats" title="Seats">▭</button>
-</nav>
+  <aside class="side">
+    <div class="brand"><span class="mark">sinaxa</span></div>
+    <div class="hd">Projects <u id="addproj" title="New project">+</u></div>
+    <div class="scroll">
+      <div class="node" id="projnode"></div>
+      <div class="sessions" id="tree"></div>
+    </div>
+    <nav class="nav">
+      <div class="nb on" data-view="rooms"><i>▤</i>Projects</div>
+      <div class="nb" data-view="members"><i>◉</i>Members</div>
+      <div class="nb" data-view="seats"><i>▭</i>Seats</div>
+    </nav>
+  </aside>
 
-<aside id="side">
-  <div id="sideHead">
-    <select id="projectPick"></select>
-    <button id="addProject" class="icon" title="New project">+</button>
-  </div>
-  <div id="tree"></div>
-  <div id="sideFoot">
-    <button id="addSession" class="ghost">New session</button>
-    <button id="manage" class="ghost">Manage session</button>
-  </div>
-</aside>
+  <section class="main">
+    <header class="top">
+      <div class="title" id="title"></div>
+      <div class="seatbar" id="seatbar"></div>
+      <div class="grow"></div>
+      <button class="chip" id="managebtn">Manage team…</button>
+    </header>
+    <div class="thread" id="thread"></div>
+    <div class="composer" id="composer">
+      <div class="cbox">
+        <textarea id="input" placeholder="Message the room…"></textarea>
+        <div class="ctools"><div class="grow"></div><button class="send" id="sendbtn">Send</button></div>
+      </div>
+    </div>
+  </section>
 
-<main id="main">
-  <header id="head"></header>
-  <section id="body"></section>
-  <footer id="foot">
-    <textarea id="input" rows="1" placeholder="Write to the room…"></textarea>
-    <button id="send">Send</button>
-  </footer>
-</main>
-
-<div id="modal" hidden><div id="card"></div></div>
+  <div class="statusbar" id="statusbar"></div>
+</div>
 
 <script>
-/* ---------------------------------------------------------------- state */
-let S = null;                 /* the last answer from /api/state          */
-let VIEW = 'rooms';
+/* ------------------------------------------------------------------ state */
+let S = null;              /* last /api/state payload */
+let VIEW = 'rooms';        /* rooms | members | seats */
 let PROJECT = null, SESSION = null, ROOM = null;
-let SEL = new Set();          /* seats picked with cmd/ctrl-click          */
-let STICK = true;             /* was the thread at the bottom before this  */
-let BUSY = false;
+let OPEN = true;           /* is the session expanded in the sidebar */
+let SEL = new Set();       /* seat ids picked with cmd/ctrl-click */
+let STICK = true;          /* was the thread at the bottom before this render */
+let POLL = null, SENDING = false;
 
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
-  (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const el = id => document.getElementById(id);
+const hhmm = ts => { const d = new Date(ts*1000);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
 
-/* ------------------------------------------------------------- the wire */
-async function api(method, path, body) {
+const names = () => (S.members || []).map(m => m.name).join('|');
+const fmt = s => esc(s)
+  .replace(/```([\s\S]*?)```/g,(m,c)=>'<pre>'+c.replace(/^\n/,'')+'</pre>')
+  .replace(/`([^`\n]+)`/g,'<code>$1</code>')
+  .replace(new RegExp('@('+(names()||'\\w+')+')\\b','g'),'<span class="mention">@$1</span>');
+
+const project  = () => (S.projects || []).find(p => p.id === PROJECT);
+const session  = () => (project() || {sessions:[]}).sessions.find(s => s.id === SESSION);
+const room     = () => (S.rooms || []).find(r => r.id === ROOM) || (S.rooms || [])[0];
+const mainRm   = () => (S.rooms || []).find(r => r.kind === 'all');
+const subs     = () => (S.rooms || []).filter(r => r.kind === 'custom');
+const seatById = id => (S.seats || []).find(s => s.id === id);
+const privateOf= seat => (S.rooms || []).find(
+  r => r.kind === 'private' && r.seats.length === 1 && r.seats[0] === seat.id);
+const memberById = id => (S.members || []).find(m => m.id === id);
+const initial  = m => (m && m.name ? m.name[0].toUpperCase() : '·');
+const liveOf   = seatId => ((S.status || {}).agents || [])
+  .find(a => a.seat === seatId) || {};
+const engineOf = id => (S.engines || []).find(e => e.id === id) || {};
+const agents   = () => (S.members || []).filter(m => m.kind !== 'human');
+
+/* ------------------------------------------------------------------ sidebar */
+function renderTree(){
+  const node = el('projnode'), box = el('tree');
+  const p = project();
+  node.innerHTML = p
+    ? `<span class="t">${esc(p.name)}</span>
+       <span class="toggle" id="addsess" title="New session">+</span>`
+    : '<span class="t" style="color:var(--dim2)">no project yet</span>';
+  if (p){
+    node.querySelector('.t').onclick = projectMenu;
+    node.oncontextmenu = e => { e.preventDefault(); projectMenu(); };
+    el('addsess').onclick = e => { e.stopPropagation(); addSession(); };
+  }
+
+  box.innerHTML = '';
+  if (!p) return;
+
+  p.sessions.forEach(ses => {
+    const open = ses.id === SESSION && OPEN;
+    const row = document.createElement('div');
+    row.className = 'sess' + (ses.id === SESSION && ROOM === (mainRm()||{}).id ? ' on' : '');
+    row.innerHTML = `<span class="arrow ${open ? 'open' : ''}"
+        title="${open ? 'collapse' : 'expand'}">▶</span>
+      <span class="t">${esc(ses.name)}</span>
+      <span class="toggle" title="Remove session">×</span>`;
+    /* the arrow expands, the label selects — two different things */
+    row.querySelector('.arrow').onclick = e => { e.stopPropagation();
+      if (ses.id !== SESSION){ SESSION = ses.id; ROOM = null; OPEN = true; return refresh(); }
+      OPEN = !OPEN; render(); };
+    row.querySelector('.t').onclick = () => {
+      SESSION = ses.id; ROOM = (ses.id === SESSION && mainRm()) ? mainRm().id : null;
+      SEL.clear(); refresh(); };
+    row.querySelector('.toggle').onclick = e => { e.stopPropagation();
+      removeSession(ses); };
+    box.appendChild(row);
+    if (ses.id !== SESSION || !OPEN) return;
+
+    const kids = document.createElement('div'); kids.className = 'sub';
+
+    /* One entry per seat. A plain click selects it and opens its room;
+       cmd/ctrl-click adds a second seat to the selection; right-clicking the
+       selection offers to make a room out of it. */
+    (S.seats || []).forEach(seat => {
+      const mem = memberById(seat.occupant);
+      const priv = privateOf(seat);
+      const node = document.createElement('div');
+      node.className = 'room' + (priv && priv.id === ROOM ? ' on' : '')
+                     + (SEL.has(seat.id) ? ' sel' : '') + (seat.trouble ? ' free' : '');
+      node.innerHTML = `<span class="t">${esc(seat.role)}</span>`
+        + `<span class="sw" style="background:${mem ? mem.colour : 'var(--bg3)'}">${
+             esc(mem ? initial(mem) : '!')}</span>`;
+      node.onclick = e => {
+        e.stopPropagation();
+        if (e.metaKey || e.ctrlKey){
+          SEL.has(seat.id) ? SEL.delete(seat.id) : SEL.add(seat.id);
+          return render();
+        }
+        SEL = new Set([seat.id]);
+        if (priv) ROOM = priv.id;
+        refresh();
+      };
+      node.oncontextmenu = e => {
+        if (!SEL.has(seat.id)) SEL = new Set([seat.id]);
+        render(); seatMenu(e);
+      };
+      kids.appendChild(node);
+    });
+
+    /* Rooms you define yourself: the lead plus a chosen few. */
+    subs().forEach(r => {
+      const node = document.createElement('div');
+      node.className = 'room' + (r.id === ROOM ? ' on' : '');
+      node.innerHTML = `<span class="t"># ${esc(r.name)}</span>
+        <span class="toggle" title="Remove room">×</span>`;
+      node.onclick = e => { e.stopPropagation(); ROOM = r.id; SEL.clear(); refresh(); };
+      node.querySelector('.toggle').onclick = e => { e.stopPropagation(); removeRoom(r); };
+      kids.appendChild(node);
+    });
+
+    box.appendChild(kids);
+  });
+}
+
+/* --------------------------------------------------------------- header
+   Everything about who is in the team lives here: the breadcrumb, then one
+   pill per seat. A seat is the way into its occupant's room. */
+function renderHead(){
+  const t = el('title'), p = project(), ses = session();
+  t.innerHTML = `<span class="proj">${esc(p ? p.name : 'sinaxa')}</span>`
+    + (ses ? `<span class="dot">/</span><span class="sess" data-go>${esc(ses.name)}</span>` : '');
+  if (ses) t.querySelector('[data-go]').onclick = () => {
+    ROOM = mainRm() ? mainRm().id : null; refresh(); };
+
+  const bar = el('seatbar'); bar.innerHTML = '';
+  if (VIEW !== 'rooms') return;
+  (S.seats || []).forEach(seat => {
+    const mem = memberById(seat.occupant);
+    const a = liveOf(seat.id);
+    const priv = privateOf(seat);
+    const busy = (S.busy || []).includes(seat.id);
+    const pill = document.createElement('span');
+    pill.className = 'pers' + (seat.trouble ? ' free' : '') + (busy ? ' busy' : '')
+                   + (priv && priv.id === ROOM ? ' on' : '');
+    pill.title = seat.trouble ? seat.trouble
+      : `${esc(seat.prompt_effective).slice(0,160)}`
+        + `\n\n${a.provider || (mem ? mem.engine : '')} · ${a.model || (mem ? mem.model : '') || 'default'}`
+        + `\n${a.turns || 0} turns · ${a.tokens || 0} tokens`;
+    pill.innerHTML = `<span class="sw" style="background:${mem ? mem.colour : ''}">${
+        esc(mem ? initial(mem) : '·')}</span>`
+      + `<span>${esc(seat.name)}</span><span class="role">${esc(seat.role)}</span>`
+      + (busy ? ' <span class="act">answering…</span>' : '');
+    if (priv) pill.onclick = () => { ROOM = priv.id; SEL.clear(); refresh(); };
+    bar.appendChild(pill);
+  });
+}
+
+/* ------------------------------------------------------------------ thread */
+function renderThread(){
+  const r = room(), th = el('thread');
+  th.className = 'thread';
+  STICK = th.scrollTop + th.clientHeight >= th.scrollHeight - 40;
+  if (!r){
+    th.innerHTML = '<div class="empty">No project yet.<br>'
+      + 'Add one from the + beside Projects — but define your members and '
+      + 'seats first.</div>';
+    return;
+  }
+  const messages = S.messages || [];
+  if (!messages.length){
+    th.innerHTML = '<div class="empty">Empty room.<br>'
+      + 'Write something — @Name for one of them, nothing for everyone.</div>';
+    return;
+  }
+  th.innerHTML = messages.map(m => {
+    if (m.kind === 'error') return `<div class="err">${esc(m.author_name)}: ${esc(m.text)}</div>`;
+    if (m.kind === 'system') return `<div class="sys"><span>${esc(m.text)}</span></div>`;
+    const lead = m.author === 'lead';
+    const seat = lead ? null : seatById(m.author);
+    const mem  = lead ? (S.lead || {}) : (seat ? memberById(seat.occupant) : null);
+    const colour = lead ? ((S.lead || {}).colour || 'var(--lead)')
+                        : (mem ? mem.colour : 'var(--bg3)');
+    const meta = m.meta || {};
+    const tags = (mem && mem.model ? `<span class="tag">${esc(mem.model)}</span>` : '')
+      + (meta.elapsed !== undefined ? `<span class="tag">${meta.elapsed}s</span>` : '')
+      + (meta.tokens ? `<span class="tag">${meta.tokens} tok</span>` : '')
+      + (lead ? '<span class="lb">★ lead</span>' : '');
+    return `<div class="msg"><div class="av" style="background:${colour}">${
+        esc(initial({name: m.author_name}))}</div><div>
+      <div class="who"><b>${esc(m.author_name)}</b>${tags}<span class="time">${hhmm(m.ts)}</span></div>
+      <div class="bd">${fmt(m.text)}</div></div></div>`;
+  }).join('');
+  /* The scroll is applied at the end of render(), not here: the status bar
+     is filled after this and takes height away from the thread, so scrolling
+     now would land short by exactly that much. */
+}
+
+/* ------------------------------------------------------------------ views */
+function renderMembers(){
+  const th = el('thread'); th.className = 'view';
+  const rows = (S.members || []).map(m => {
+    const engine = engineOf(m.engine);
+    return `<div class="row">
+      <span class="sw" style="background:${m.colour}">${esc(initial(m))}</span>
+      <span class="nm">${esc(m.name)}</span>
+      <span class="meta">${m.kind === 'human' ? 'human · the lead'
+                                              : esc(engine.label || m.engine)}</span>
+      <span class="say">${esc(m.model || 'default model')}${
+          m.effort ? ' · ' + esc(m.effort) : ''}${
+          m.binary ? ' · ' + esc(m.binary) : ''}</span>
+      <span class="tools">${m.kind === 'human' ? ''
+        : `<button class="btn" data-edit="${m.id}">Edit</button>
+           <button class="btn danger" data-del="${m.id}">Remove</button>`}</span>
+    </div>`;
+  }).join('');
+  th.innerHTML = `<h3>Members</h3>
+    <div class="lead">Who can take a seat: you, and one entry per engine you
+      have. A member says how an occupant is started — never what it is told.
+      That is the seat's prompt.</div>
+    <div class="bar"><button class="btn primary" id="addmem">Add member</button></div>
+    <div class="rows">${rows || '<div class="empty">Nobody yet.</div>'}</div>`;
+  el('addmem').onclick = () => memberForm(null);
+  th.querySelectorAll('[data-edit]').forEach(b =>
+    b.onclick = () => memberForm(memberById(b.dataset.edit)));
+  th.querySelectorAll('[data-del]').forEach(b =>
+    b.onclick = () => act(() => api('DELETE', '/api/members/' + b.dataset.del)));
+}
+
+function renderSeats(){
+  const th = el('thread'); th.className = 'view';
+  const here = {};
+  (S.seats || []).forEach(s => { here[s.seat_def] = s; });
+  const rows = (S.seat_defs || []).map(d => {
+    const mem = memberById(d.default_member);
+    const seat = here[d.id];
+    const live = seat ? liveOf(seat.id) : null;
+    const state = !seat ? '<span class="idle">not in this session</span>'
+      : seat.trouble ? `<span class="warn">${esc(seat.trouble)}</span>`
+      : (live && live.turns) ? `<span class="live">live · ${live.turns} turns
+           · ${live.tokens} tok</span>`
+      : '<span class="idle">idle</span>';
+    return `<div class="row${seat && seat.trouble ? ' bad' : ''}">
+      <span class="sw" style="background:${mem ? mem.colour : 'var(--bg3)'}">${
+          esc(mem ? initial(mem) : '·')}</span>
+      <span class="nm">${esc(d.role)}</span>
+      <span class="meta">${esc(mem ? mem.name : 'no default member')}</span>
+      <span class="say">${esc(d.prompt)}</span>
+      <span class="meta">${state}</span>
+      <span class="tools">
+        <button class="btn" data-edit="${d.id}">Edit</button>
+        <button class="btn danger" data-del="${d.id}">Remove</button></span>
+    </div>`;
+  }).join('');
+  th.innerHTML = `<h3>Seats</h3>
+    <div class="lead">The roles, defined once for the whole of sinaxa. A role
+      carries the prompt its occupant is given, and a default member; a new
+      project starts with a seat for every role that has one.</div>
+    <div class="bar"><button class="btn primary" id="adddef">Add role</button></div>
+    <div class="rows">${rows || '<div class="empty">No roles yet.</div>'}</div>`;
+  el('adddef').onclick = () => seatDefForm(null);
+  th.querySelectorAll('[data-edit]').forEach(b =>
+    b.onclick = () => seatDefForm((S.seat_defs || []).find(d => d.id === b.dataset.edit)));
+  th.querySelectorAll('[data-del]').forEach(b =>
+    b.onclick = () => act(() => api('DELETE', '/api/seatdefs/' + b.dataset.del)));
+}
+
+/* ------------------------------------------------------------------ status */
+function renderStatus(){
+  const s = S.status || {}, bar = el('statusbar');
+  if (!s.agents){
+    bar.innerHTML = `<b>${(S.projects || []).length}</b> projects<span class="sep">·</span>`
+      + `<b>${(S.members || []).length}</b> members<span class="sep">·</span>`
+      + `<b>${(S.seat_defs || []).length}</b> roles`;
+    return;
+  }
+  const engines = (s.engines || []).filter(e => e.alive).map(e => e.label).join(', ');
+  bar.innerHTML =
+     `<b>${esc(engines || 'nothing started')}</b><span class="sep">|</span>`
+    +`<b>${s.seats}</b> seats<span class="sep">·</span>`
+    +`<b>${s.agents.length}</b> conversations<span class="sep">·</span>`
+    +`<b>${(s.processes || []).length}</b> processes<span class="sep">·</span>`
+    +(s.total_rss_mb ? `<b>${s.total_rss_mb}</b> MB<span class="sep">·</span>` : '')
+    +`<b>${s.turns}</b> turns<span class="sep">·</span>`
+    +`<b>${(s.tokens || 0).toLocaleString()}</b> tokens`;
+}
+
+function render(){
+  renderTree(); renderHead();
+  if (VIEW === 'rooms') renderThread();
+  if (VIEW === 'members') renderMembers();
+  if (VIEW === 'seats') renderSeats();
+  renderStatus();
+
+  const r = room();
+  el('composer').style.display = (VIEW === 'rooms' && r) ? '' : 'none';
+  el('managebtn').style.display = (VIEW === 'rooms' && SESSION) ? '' : 'none';
+  el('sendbtn').disabled = SENDING;
+  if (r) el('input').placeholder = r.kind === 'private'
+      ? 'Message ' + ((seatById(r.seats[0]) || {}).name || r.name) + '…'
+      : 'Message the room…   @Name to address one';
+  if (VIEW === 'rooms' && STICK) requestAnimationFrame(() => {
+    const th = el('thread'); th.scrollTop = th.scrollHeight; });
+}
+
+/* --------------------------------------------------------------- selection
+   A room is the lead plus the agents you picked, so it takes at least two
+   seats to be worth making — one is the private room you already have. */
+function closeMenu(){ document.querySelectorAll('.ctx').forEach(m => m.remove()); }
+document.addEventListener('click', closeMenu);
+
+function menuAt(ev, html){
+  closeMenu();
+  const menu = document.createElement('div'); menu.className = 'ctx';
+  menu.innerHTML = html;
+  document.body.appendChild(menu);
+  menu.style.left = Math.min(ev.clientX, innerWidth  - menu.offsetWidth  - 8) + 'px';
+  menu.style.top  = Math.min(ev.clientY, innerHeight - menu.offsetHeight - 8) + 'px';
+  return menu;
+}
+
+function seatMenu(ev){
+  ev.preventDefault(); ev.stopPropagation();
+  const picked = [...SEL].map(id => seatById(id)).filter(Boolean);
+  const who = picked.map(x => x.name);
+  const enough = picked.length >= 2;
+  const menu = menuAt(ev, `<div class="hdr">${esc(who.join(' · ')) || 'nothing selected'}</div>
+    <button data-make><i>▤</i>Create a room</button>
+    ${enough ? '' : '<div class="hint2">cmd-click a second seat</div>'}`);
+  const make = menu.querySelector('[data-make]');
+  if (!enough){ make.disabled = true; make.title = 'pick a second seat with cmd-click'; }
+  else make.onclick = e => { e.stopPropagation(); closeMenu(); newRoom(picked); };
+}
+
+function projectMenu(ev){
+  const event = ev || {clientX: 20, clientY: 60};
+  const menu = menuAt(event, `<div class="hdr">${esc((project()||{}).name || '')}</div>`
+    + (S.projects || []).map(p =>
+        `<button data-go="${p.id}"><i>${p.id === PROJECT ? '✓' : ''}</i>${esc(p.name)}</button>`).join('')
+    + `<div class="rule"></div>
+       <button data-new><i>+</i>New project</button>
+       <button data-drop><i>×</i>Remove this project</button>`);
+  menu.querySelectorAll('[data-go]').forEach(b =>
+    b.onclick = e => { e.stopPropagation(); closeMenu();
+      PROJECT = b.dataset.go; SESSION = null; ROOM = null; SEL.clear(); refresh(); });
+  menu.querySelector('[data-new]').onclick = e => { e.stopPropagation(); closeMenu(); addProject(); };
+  menu.querySelector('[data-drop]').onclick = e => { e.stopPropagation(); closeMenu(); removeProject(); };
+}
+
+/* ------------------------------------------------------------------ dialogs */
+function closeModal(){ document.querySelectorAll('.scrim').forEach(s => s.remove()); }
+
+function modal(html, onOk, okLabel, danger){
+  closeModal();
+  const scrim = document.createElement('div'); scrim.className = 'scrim';
+  scrim.innerHTML = `<div class="modal${danger === 'wide' ? ' wide' : ''}">${html}
+    <div class="foot"><button class="btn" data-x>Cancel</button>
+      ${onOk ? `<button class="btn ${danger === true ? 'danger' : 'primary'}" data-ok>${
+        esc(okLabel || 'Confirm')}</button>` : ''}</div></div>`;
+  document.body.appendChild(scrim);
+  scrim.onclick = e => { if (e.target === scrim) closeModal(); };
+  scrim.querySelector('[data-x]').onclick = closeModal;
+  const ok = scrim.querySelector('[data-ok]');
+  if (ok) ok.onclick = () => act(onOk).then(closeModal);
+  return scrim;
+}
+
+/* Save stays dead until something changed -- a button that saves what is
+   already saved teaches you to press it without reading.
+
+   Creating is the exception: a new room arrives with its name already filled
+   in, and there is nothing to change before it is worth making. So `fresh`
+   asks only that the form be valid. */
+function watch(root, button, valid, fresh){
+  if (!button) return null;
+  const fields = () => Array.from(root.querySelectorAll('input,select,textarea'));
+  const snap = () => fields().map(f => f.type === 'checkbox' ? String(f.checked) : f.value).join('|');
+  let saved = snap();
+  const check = () => {
+    const ok = !valid || valid(root);
+    button.disabled = !(ok && (fresh || snap() !== saved));
+  };
+  root.addEventListener('input', check);
+  root.addEventListener('change', check);
+  check();
+  return {check, rebase: () => { saved = snap(); check(); }};
+}
+const filled = (root, sel) =>
+  Array.from(root.querySelectorAll(sel)).every(f => f.value.trim());
+
+/* ------------------------------------------------------------------ members */
+function memberForm(member){
+  const list = S.engines || [];
+  const chosen = member ? member.engine : (list[0] || {}).id;
+  const scrim = modal(`<h3>${member ? 'Edit member' : 'Add member'}</h3>
+    <div class="lead">How this occupant is started. Not what it is told — that
+      is the seat's prompt.</div>
+    <label class="field">Name <input id="mName" value="${esc(member ? member.name : '')}"></label>
+    <label class="field">Engine <select id="mEngine">
+      ${list.map(e => `<option value="${e.id}" ${e.id === chosen ? 'selected' : ''}>${
+          esc(e.label)}</option>`).join('')}</select>
+      <div class="why" id="mWhy"></div></label>
+    <label class="field">Model <span id="mModel"></span></label>
+    <label class="field">Effort <span id="mEffort"></span></label>
+    <label class="field">Binary <input id="mBinary" placeholder="leave empty for the default"
+      value="${esc(member ? (member.binary || '') : '')}"></label>`,
+  async () => {
+    const body = {name: el('mName').value.trim(), engine: el('mEngine').value,
+      model: el('mModelIn') ? el('mModelIn').value.trim() : null,
+      effort: el('mEffortIn') ? (el('mEffortIn').value || null) : null,
+      binary: el('mBinary').value.trim() || null};
+    if (member) await api('PATCH', '/api/members/' + member.id, body);
+    else await api('POST', '/api/members', body);
+  }, member ? 'Save' : 'Add');
+
+  const guard = watch(scrim, scrim.querySelector('[data-ok]'),
+                      r => filled(r, '#mName'), !member);
+
+  const paint = async () => {
+    const engine = engineOf(el('mEngine').value);
+    el('mWhy').textContent = engine.note || '';
+    const current = member && member.engine === engine.id ? (member.model || '') : '';
+    let models = engine.models || [];
+    if (engine.models_from_engine){
+      el('mModel').innerHTML = '<i class="why">asking the engine…</i>';
+      models = (await api('GET', '/api/models?engine=' + engine.id)
+                  .catch(() => ({models: []}))).models;
+    }
+    el('mModel').innerHTML = (models.length && !engine.models_are_a_hint)
+      ? `<select id="mModelIn">${models.map(m =>
+           `<option ${m === current ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`
+      : `<input id="mModelIn" list="mList" value="${esc(current)}">
+         <datalist id="mList">${models.map(m => `<option>${esc(m)}</option>`).join('')}</datalist>`;
+    const efforts = engine.efforts || [];
+    el('mEffort').innerHTML = efforts.length
+      ? `<select id="mEffortIn">${efforts.map(e => `<option ${
+          ((member && member.effort) || engine.effort_default) === e ? 'selected' : ''
+         }>${esc(e)}</option>`).join('')}</select>`
+      : '<i class="why">not set here for this engine</i>';
+  };
+  /* The model and effort controls do not exist until the engine is known, so
+     "unchanged" can only be recorded after the first paint. A later repaint
+     is a change the person made, and must leave Save alive. */
+  el('mEngine').onchange = () => paint().then(() => guard && guard.check());
+  paint().then(() => guard && guard.rebase());
+}
+
+/* -------------------------------------------------------------------- roles */
+function seatDefForm(def){
+  const scrim = modal(`<h3>${def ? 'Edit role' : 'Add role'}</h3>
+    <div class="lead">A role is what its occupant is told it does. The prompt
+      is not optional — a seat without instructions is not a state we allow.</div>
+    <label class="field">Role <input id="dRole" value="${esc(def ? def.role : '')}"></label>
+    <label class="field">Prompt
+      <textarea id="dPrompt" rows="6">${esc(def ? def.prompt : '')}</textarea>
+      <div class="why">A session may word it differently for its own seat.</div></label>
+    <label class="field">Default member <select id="dWho">
+      <option value="">— none —</option>
+      ${agents().map(m => `<option value="${m.id}" ${
+          def && def.default_member === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+      </select>
+      <div class="why">A new project seats every role that has one.</div></label>`,
+  async () => {
+    const body = {role: el('dRole').value.trim(), prompt: el('dPrompt').value,
+                  default_member: el('dWho').value || null};
+    if (def) await api('PATCH', '/api/seatdefs/' + def.id, body);
+    else await api('POST', '/api/seatdefs', body);
+  }, def ? 'Save' : 'Add');
+  watch(scrim, scrim.querySelector('[data-ok]'), r => filled(r, '#dRole, #dPrompt'), !def);
+}
+
+/* ----------------------------------------------------------- manage team */
+function manageTeam(){
+  const taken = new Set((S.seats || []).map(s => s.seat_def));
+  const free = (S.seat_defs || []).filter(d => !taken.has(d.id));
+
+  const rows = (S.seats || []).map(seat => `
+    <div class="seatrow" data-seat="${seat.id}" style="align-items:flex-start">
+      <div style="flex:0 0 118px">
+        <b style="font-size:12.5px">${esc(seat.role)}</b>
+        <select class="whosel" style="margin-top:6px">
+          ${agents().map(m => `<option value="${m.id}" ${
+              m.id === seat.occupant ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:1;min-width:0">
+        <textarea class="promptin" rows="3">${esc(seat.prompt_effective)}</textarea>
+        <div class="why" style="color:var(--dim2);font-size:11px">${seat.overridden
+          ? 'this session’s own wording'
+          : 'the role’s wording, as defined in Seats'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex:none">
+        <button class="btn" data-save>Save</button>
+        <button class="btn" data-reset ${seat.overridden ? '' : 'disabled'}>Reset to default</button>
+        <button class="btn" data-clear>Clear context</button>
+        <button class="btn danger" data-drop>Remove seat</button>
+      </div>
+    </div>`).join('');
+
+  const scrim = modal(`<h3>Manage team</h3>
+    <div class="lead">Seats belong to the session. A seat is a role; who fills
+      it can change without the seat losing its place in the rooms.</div>
+    <div class="seatlist">${rows || '<div class="empty">No seats yet.</div>'}</div>
+    <div class="seatrow" style="margin-top:8px">
+      <select class="rolesel" id="newDef" style="flex:0 0 122px">
+        ${free.map(d => `<option value="${d.id}">${esc(d.role)}</option>`).join('')
+          || '<option value="">every role is seated</option>'}
+      </select>
+      <select class="whosel" id="newWho">
+        ${agents().map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
+      </select>
+      <button class="btn" id="addSeat" ${free.length ? '' : 'disabled'}>Add seat</button>
+    </div>`, null, null, 'wide');
+
+  const by = {}; (S.seats || []).forEach(s => { by[s.id] = s; });
+  const where = `?project=${PROJECT}&session=${SESSION}`;
+
+  scrim.querySelectorAll('[data-seat]').forEach(row => {
+    const seat = by[row.dataset.seat];
+    const box = row.querySelector('.promptin');
+    const save = row.querySelector('[data-save]');
+    const reset = row.querySelector('[data-reset]');
+    watch(row, save, r => filled(r, 'textarea'));
+
+    save.onclick = () => act(async () => {
+      /* The box always shows the prompt in force. Leaving it as the role
+         wrote it means no override at all — the server reads a blank as
+         "use the role's". */
+      const written = box.value;
+      const same = written.trim() === (seat.prompt_default || '').trim();
+      const answer = await api('PATCH', '/api/seats/' + seat.id, {
+        project: PROJECT, session: SESSION,
+        occupant: row.querySelector('.whosel').value,
+        prompt: same ? '' : written});
+      if (answer.warning) toast(answer.warning);
+    }).then(closeModal);
+
+    reset.onclick = () => {
+      box.value = seat.prompt_default || '';
+      row.querySelector('.why').textContent =
+        'the role’s wording — edit it to make it this session’s own';
+      reset.disabled = true;
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+      box.focus();
+    };
+    row.querySelector('[data-clear]').onclick = () => act(() =>
+      api('POST', '/api/seats/' + seat.id + '/clear',
+          {project: PROJECT, session: SESSION}));
+    row.querySelector('[data-drop]').onclick = () => act(() =>
+      api('DELETE', '/api/seats/' + seat.id + where)).then(closeModal);
+  });
+
+  if (el('addSeat')) el('addSeat').onclick = () => act(() =>
+    api('POST', '/api/seats', {project: PROJECT, session: SESSION,
+      seat_def: el('newDef').value, occupant: el('newWho').value})).then(closeModal);
+}
+
+/* --------------------------------------------------------------- projects */
+function addProject(){
+  const scrim = modal(`<h3>New project</h3>
+    <div class="lead">It starts with a session called main, a seat for every
+      role that has a default member, and a room each.</div>
+    <label class="field">Name <input id="pName"></label>
+    <label class="field">Folder <input id="pCwd" placeholder="where the agents will read"></label>`,
+  async () => {
+    await api('POST', '/api/projects', {name: el('pName').value.trim(),
+                                        cwd: el('pCwd').value.trim() || null});
+    PROJECT = null; SESSION = null; ROOM = null;
+  }, 'Create');
+  watch(scrim, scrim.querySelector('[data-ok]'), r => filled(r, '#pName'), true);
+}
+
+function removeProject(){
+  const p = project(); if (!p) return;
+  modal(`<h3>Remove ${esc(p.name)}</h3>
+    <div class="lead">The project leaves the list. Its transcripts stay on
+      disk unless you say otherwise.</div>
+    <label class="checkline"><input type="checkbox" id="pErase">
+      also erase them from the disk</label>`,
+  async () => {
+    await api('DELETE', '/api/projects/' + p.id + (el('pErase').checked ? '?erase=1' : ''));
+    PROJECT = null; SESSION = null; ROOM = null;
+  }, 'Remove', true);
+}
+
+function addSession(){
+  const scrim = modal(`<h3>New session</h3>
+    <div class="lead">A session starts empty — add its seats from Manage team.</div>
+    <label class="field">Name <input id="sName"></label>`,
+  async () => {
+    const answer = await api('POST', '/api/sessions',
+      {project: PROJECT, name: el('sName').value.trim()});
+    SESSION = answer.session.id; ROOM = null; OPEN = true;
+  }, 'Create');
+  watch(scrim, scrim.querySelector('[data-ok]'), r => filled(r, '#sName'), true);
+}
+
+function removeSession(ses){
+  modal(`<h3>Remove ${esc(ses.name)}</h3>
+    <div class="lead">Its seats and rooms go with it.</div>
+    <label class="checkline"><input type="checkbox" id="sErase">
+      also erase its transcripts from the disk</label>`,
+  async () => {
+    await api('DELETE', '/api/sessions/' + ses.id
+      + (el('sErase').checked ? '?erase=1&' : '?') + 'project=' + PROJECT);
+    SESSION = null; ROOM = null;
+  }, 'Remove', true);
+}
+
+function newRoom(picked){
+  const scrim = modal(`<h3>New room</h3>
+    <div class="lead">${esc(picked.map(s => s.name).join(', '))} — and you.</div>
+    <label class="field">Name <input id="rName"
+      value="${esc(picked.map(s => s.role).join('+'))}"></label>`,
+  async () => {
+    await api('POST', '/api/rooms', {project: PROJECT, session: SESSION,
+      name: el('rName').value.trim(), seats: picked.map(s => s.id)});
+    SEL.clear();
+  }, 'Create');
+  watch(scrim, scrim.querySelector('[data-ok]'), r => filled(r, '#rName'), true);
+}
+
+function removeRoom(r){
+  modal(`<h3>Remove # ${esc(r.name)}</h3>
+    <div class="lead">The seats stay; only this grouping goes.</div>
+    <label class="checkline"><input type="checkbox" id="rErase">
+      also erase its transcript from the disk</label>`,
+  async () => {
+    await api('DELETE', '/api/rooms/' + r.id
+      + (el('rErase').checked ? '?erase=1&' : '?')
+      + 'project=' + PROJECT + '&session=' + SESSION);
+    ROOM = null;
+  }, 'Remove', true);
+}
+
+/* ------------------------------------------------------------------ io */
+async function api(method, path, body){
   const options = {method, headers: {'Content-Type': 'application/json'}};
   if (body !== undefined) options.body = JSON.stringify(body);
   const answer = await fetch(path, options);
@@ -61,7 +682,12 @@ async function api(method, path, body) {
   return data;
 }
 
-async function refresh() {
+async function act(work){
+  try { if (work) await work(); await refresh(); }
+  catch (exc) { toast(exc.message); }
+}
+
+async function refresh(){
   const query = new URLSearchParams();
   if (PROJECT) query.set('project', PROJECT);
   if (SESSION) query.set('session', SESSION);
@@ -71,582 +697,40 @@ async function refresh() {
   SESSION = S.session || null;
   ROOM = S.room || null;
   render();
+  clearTimeout(POLL);
+  POLL = setTimeout(refresh, (S.busy || []).length ? 700 : 2500);
 }
 
-async function act(work) {
-  try { await work(); await refresh(); }
-  catch (exc) { note(exc.message); }
-}
-
-function note(text, kind) {
-  const bar = document.createElement('div');
-  bar.className = 'note ' + (kind || 'bad');
-  bar.textContent = text;
-  document.body.appendChild(bar);
-  setTimeout(() => bar.remove(), 6000);
-}
-
-/* --------------------------------------------------------------- render */
-function render() {
-  const thread = $('body');
-  STICK = !thread.scrollHeight ||
-          thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 40;
-  renderProjects();
-  renderTree();
-  if (VIEW === 'rooms') renderRoom();
-  if (VIEW === 'members') renderMembers();
-  if (VIEW === 'seats') renderSeats();
-  $('foot').hidden = VIEW !== 'rooms' || !ROOM;
-  $('sideFoot').hidden = VIEW !== 'rooms' || !SESSION;
-}
-
-function renderProjects() {
-  const pick = $('projectPick');
-  pick.innerHTML = (S.projects || []).map((p) =>
-    `<option value="${p.id}" ${p.id === PROJECT ? 'selected' : ''}>${esc(p.name)}</option>`
-  ).join('') || '<option value="">no project yet</option>';
-}
-
-function project() {
-  return (S.projects || []).find((p) => p.id === PROJECT);
-}
-
-function seatById(id) {
-  return (S.seats || []).find((s) => s.id === id);
-}
-
-function renderTree() {
-  const tree = $('tree');
-  const here = project();
-  if (!here) { tree.innerHTML = '<p class="empty">Add a project to begin.</p>'; return; }
-
-  let html = '';
-  for (const session of here.sessions) {
-    const open = session.id === SESSION;
-    html += `<div class="session ${open ? 'on' : ''}" data-session="${session.id}">
-               <span class="name">${esc(session.name)}</span>
-               <button class="icon dim" data-session-del="${session.id}" title="Remove session">×</button>
-             </div>`;
-    if (!open) continue;
-    for (const room of (S.rooms || [])) {
-      const seats = room.seats.map((id) => seatById(id)).filter(Boolean);
-      const picked = seats.length && seats.every((s) => SEL.has(s.id));
-      html += `<div class="room ${room.id === ROOM ? 'on' : ''} ${picked ? 'sel' : ''}"
-                    data-room="${room.id}" data-kind="${room.kind}">
-                 <span class="dot ${room.kind}"></span>
-                 <span class="name">${esc(room.name)}</span>
-                 <span class="who">${seats.map((s) => esc(s.name)).join(', ')}</span>
-                 ${room.editable ? `<button class="icon dim" data-room-del="${room.id}" title="Remove room">×</button>` : ''}
-               </div>`;
-    }
-  }
-  tree.innerHTML = html;
-
-  tree.querySelectorAll('[data-session]').forEach((row) => {
-    row.querySelector('.name').onclick = () => {
-      SESSION = row.dataset.session; ROOM = null; SEL.clear(); refresh();
-    };
-  });
-  tree.querySelectorAll('[data-session-del]').forEach((button) => {
-    button.onclick = (event) => { event.stopPropagation();
-      removeSession(button.dataset.sessionDel); };
-  });
-  tree.querySelectorAll('[data-room]').forEach((row) => {
-    row.onclick = (event) => {
-      const room = (S.rooms || []).find((r) => r.id === row.dataset.room);
-      if (event.metaKey || event.ctrlKey) {
-        room.seats.forEach((id) => SEL.has(id) ? SEL.delete(id) : SEL.add(id));
-        render();
-        return;
-      }
-      SEL.clear(); ROOM = row.dataset.room; refresh();
-    };
-    row.oncontextmenu = (event) => {
-      event.preventDefault();
-      if (SEL.size >= 1) askNewRoom();
-    };
-  });
-  tree.querySelectorAll('[data-room-del]').forEach((button) => {
-    button.onclick = (event) => { event.stopPropagation();
-      removeRoom(button.dataset.roomDel); };
-  });
-}
-
-/* ----------------------------------------------------------- the room */
-function renderRoom() {
-  const room = (S.rooms || []).find((r) => r.id === ROOM);
-  if (!room) {
-    $('head').innerHTML = '';
-    $('body').innerHTML = '<p class="empty">Pick a room.</p>';
-    return;
-  }
-  const here = project();
-  const session = here && here.sessions.find((s) => s.id === SESSION);
-  const seats = room.seats.map((id) => seatById(id)).filter(Boolean);
-
-  $('head').innerHTML =
-    `<div class="crumbs"><b>${esc(here.name)}</b>
-       <span class="sep">·</span>${esc(session ? session.name : '')}
-       <span class="sep">·</span>${esc(room.name)}</div>
-     <div class="pills">
-       ${seats.map((s) => `<span class="pill ${s.trouble ? 'bad' : ''}"
-            title="${esc(s.role)}${s.trouble ? ' — ' + esc(s.trouble) : ''}">
-            ${esc(s.name)}</span>`).join('')}
-     </div>
-     <button id="manageTop" class="ghost">Manage session…</button>`;
-  $('manageTop').onclick = manageSession;
-
-  const busy = new Set(S.busy || []);
-  $('body').innerHTML = (S.messages || []).map((message) => {
-    const mine = message.author === 'lead';
-    const error = message.kind === 'error';
-    return `<div class="msg ${mine ? 'mine' : ''} ${error ? 'bad' : ''}">
-              <div class="from">${esc(message.author_name)}
-                <span class="when">${when(message.ts)}</span>
-                ${message.meta && message.meta.tokens
-                    ? `<span class="tag">${message.meta.tokens} tok</span>` : ''}
-              </div>
-              <div class="text">${esc(message.text)}</div>
-            </div>`;
-  }).join('') +
-    (busy.size ? `<div class="msg pending"><div class="from">…</div>
-       <div class="text">${[...busy].map((id) => {
-         const seat = seatById(id); return seat ? esc(seat.name) : '?'; }).join(', ')}
-       is answering</div></div>` : '');
-
-  if (STICK) requestAnimationFrame(() => {
-    const thread = $('body'); thread.scrollTop = thread.scrollHeight;
-  });
-}
-
-function when(ts) {
-  if (!ts) return '';
-  const date = new Date(ts * 1000);
-  return String(date.getHours()).padStart(2, '0') + ':' +
-         String(date.getMinutes()).padStart(2, '0');
-}
-
-/* --------------------------------------------------------- the members */
-function engineById(id) {
-  return (S.engines || []).find((e) => e.id === id);
-}
-
-function renderMembers() {
-  $('head').innerHTML = `<div class="crumbs"><b>Members</b>
-      <span class="sep">·</span>who can take a seat</div>
-    <button id="addMember" class="ghost">Add member</button>`;
-  $('addMember').onclick = () => memberForm(null);
-
-  const rows = (S.members || []).map((member) => {
-    const engine = engineById(member.engine);
-    return `<tr>
-      <td><b>${esc(member.name)}</b></td>
-      <td>${member.kind === 'human' ? 'human — the lead'
-                                    : esc(engine ? engine.label : member.engine)}</td>
-      <td>${esc(member.model || '')}</td>
-      <td>${esc(member.effort || '')}</td>
-      <td class="right">
-        ${member.kind === 'human' ? '' :
-          `<button class="ghost" data-edit="${member.id}">Edit</button>
-           <button class="ghost bad" data-del="${member.id}">Remove</button>`}
-      </td></tr>`;
-  }).join('');
-
-  $('body').innerHTML = `<table class="grid">
-      <thead><tr><th>Name</th><th>Engine</th><th>Model</th><th>Effort</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5" class="empty">No members yet.</td></tr>'}</tbody>
-    </table>`;
-  $('body').querySelectorAll('[data-edit]').forEach((button) => {
-    button.onclick = () => memberForm(
-      (S.members || []).find((m) => m.id === button.dataset.edit));
-  });
-  $('body').querySelectorAll('[data-del]').forEach((button) => {
-    button.onclick = () => act(() =>
-      api('DELETE', '/api/members/' + button.dataset.del));
-  });
-}
-
-function memberForm(member) {
-  const engines = S.engines || [];
-  const chosen = member ? member.engine : (engines[0] && engines[0].id);
-  const guard = modal(`<h2>${member ? 'Edit member' : 'Add member'}</h2>
-    <label>Name <input id="mName" value="${esc(member ? member.name : '')}"></label>
-    <label>Engine <select id="mEngine">
-      ${engines.map((e) => `<option value="${e.id}" ${e.id === chosen ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}
-    </select></label>
-    <div id="mEngineNote" class="hint"></div>
-    <label>Model <span id="mModelWrap"></span></label>
-    <label>Binary <input id="mBinary" placeholder="leave empty for the default"
-      value="${esc(member ? (member.binary || '') : '')}"></label>
-    <label>Effort <span id="mEffortWrap"></span></label>`,
-  async () => {
-    const body = {
-      name: $('mName').value.trim(),
-      engine: $('mEngine').value,
-      model: $('mModel') ? $('mModel').value.trim() : null,
-      binary: $('mBinary').value.trim() || null,
-      effort: $('mEffort') ? ($('mEffort').value || null) : null,
-    };
-    if (member) await api('PATCH', '/api/members/' + member.id, body);
-    else await api('POST', '/api/members', body);
-  }, 'Cancel', {track: true, valid: (root) => filled(root, '#mName')});
-
-  const paint = async () => {
-    const engine = engineById($('mEngine').value);
-    $('mEngineNote').textContent = engine ? engine.note : '';
-    const current = member && member.engine === engine.id ? (member.model || '') : '';
-    let models = engine.models || [];
-    if (engine.models_from_engine) {
-      $('mModelWrap').innerHTML = '<i class="hint">asking the engine…</i>';
-      const answer = await api('GET', '/api/models?engine=' + engine.id)
-        .catch(() => ({models: []}));
-      models = answer.models;
-    }
-    if (models.length && !engine.models_are_a_hint) {
-      $('mModelWrap').innerHTML = `<select id="mModel">${
-        models.map((m) => `<option ${m === current ? 'selected' : ''}>${esc(m)}</option>`).join('')
-      }</select>`;
-    } else {
-      $('mModelWrap').innerHTML = `<input id="mModel" list="mModelList" value="${esc(current)}">
-        <datalist id="mModelList">${models.map((m) => `<option>${esc(m)}</option>`).join('')}</datalist>`;
-    }
-    const efforts = engine.efforts || [];
-    $('mEffortWrap').innerHTML = efforts.length
-      ? `<select id="mEffort">${efforts.map((e) =>
-          `<option ${((member && member.effort) || engine.effort_default) === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>`
-      : '<i class="hint">not set here for this engine</i>';
-  };
-  /* The model and effort controls do not exist until the engine is known,
-     so "unchanged" can only be recorded after the first paint. A later
-     repaint is a change the person made, and must leave Save alive. */
-  $('mEngine').onchange = () => paint().then(() => guard && guard.check());
-  paint().then(() => guard && guard.rebase());
-}
-
-/* ----------------------------------------------------------- the seats */
-function renderSeats() {
-  $('head').innerHTML = `<div class="crumbs"><b>Seats</b>
-      <span class="sep">·</span>the roles, and who is live</div>
-    <button id="addSeatDef" class="ghost">Add role</button>`;
-  $('addSeatDef').onclick = () => seatDefForm(null);
-
-  const live = {};
-  (S.seats || []).forEach((seat) => { live[seat.seat_def] = seat; });
-
-  const rows = (S.seat_defs || []).map((definition) => {
-    const member = (S.members || []).find(
-      (m) => m.id === definition.default_member);
-    const seat = live[definition.id];
-    const status = !seat ? '<i class="hint">not in this session</i>'
-      : seat.trouble ? `<span class="bad">${esc(seat.trouble)}</span>`
-      : seat.started ? `live · ${seat.live.turns} turns · ${seat.live.tokens} tok`
-      : 'idle';
-    return `<tr>
-      <td><b>${esc(definition.role)}</b></td>
-      <td class="prompt">${esc(definition.prompt || '')}</td>
-      <td>${esc(member ? member.name : '—')}</td>
-      <td>${status}</td>
-      <td class="right">
-        <button class="ghost" data-edit="${definition.id}">Edit</button>
-        <button class="ghost bad" data-del="${definition.id}">Remove</button>
-      </td></tr>`;
-  }).join('');
-
-  $('body').innerHTML = `<table class="grid">
-      <thead><tr><th>Role</th><th>Default prompt</th><th>Default member</th>
-                 <th>In this session</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="5" class="empty">No roles yet.</td></tr>'}</tbody>
-    </table>`;
-  $('body').querySelectorAll('[data-edit]').forEach((button) => {
-    button.onclick = () => seatDefForm(
-      (S.seat_defs || []).find((d) => d.id === button.dataset.edit));
-  });
-  $('body').querySelectorAll('[data-del]').forEach((button) => {
-    button.onclick = () => act(() =>
-      api('DELETE', '/api/seatdefs/' + button.dataset.del));
-  });
-}
-
-function seatDefForm(definition) {
-  const agents = (S.members || []).filter((m) => m.kind !== 'human');
-  modal(`<h2>${definition ? 'Edit role' : 'Add role'}</h2>
-    <label>Role <input id="dRole" value="${esc(definition ? definition.role : '')}"></label>
-    <label>Default prompt
-      <textarea id="dPrompt" rows="6">${esc(definition ? definition.prompt : '')}</textarea></label>
-    <label>Default member <select id="dMember">
-      <option value="">— none —</option>
-      ${agents.map((m) => `<option value="${m.id}"
-        ${definition && definition.default_member === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
-    </select></label>
-    <p class="hint">A new project starts with a seat for every role that has
-      a default member.</p>`,
-  async () => {
-    const body = {role: $('dRole').value.trim(),
-                  prompt: $('dPrompt').value,
-                  default_member: $('dMember').value || null};
-    if (definition) await api('PATCH', '/api/seatdefs/' + definition.id, body);
-    else await api('POST', '/api/seatdefs', body);
-  }, 'Cancel', {track: true,
-                valid: (root) => filled(root, '#dRole, #dPrompt')});
-}
-
-/* ------------------------------------------------------ manage session */
-function manageSession() {
-  const agents = (S.members || []).filter((m) => m.kind !== 'human');
-  const taken = new Set((S.seats || []).map((s) => s.seat_def));
-  const free = (S.seat_defs || []).filter((d) => !taken.has(d.id));
-
-  const rows = (S.seats || []).map((seat) => `
-    <tr data-seat="${seat.id}">
-      <td><b>${esc(seat.role)}</b></td>
-      <td><select data-occupant="${seat.id}">
-        ${agents.map((m) => `<option value="${m.id}"
-          ${m.id === seat.occupant ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
-      </select></td>
-      <td><textarea data-prompt="${seat.id}" rows="4"
-            >${esc(seat.prompt_effective)}</textarea>
-          <div class="hint" data-note="${seat.id}">${seat.overridden
-            ? 'this session’s own wording'
-            : 'the role’s wording, as defined in Seats'}</div></td>
-      <td class="right">
-        <button data-save="${seat.id}">Save</button>
-        <button class="ghost" data-reset="${seat.id}"
-          ${seat.overridden ? '' : 'disabled'}>Reset to default</button>
-        <button class="ghost" data-clear="${seat.id}">Clear context</button>
-        <button class="ghost bad" data-drop="${seat.id}">Remove seat</button>
-      </td></tr>`).join('');
-
-  modal(`<h2>Manage session</h2>
-    <table class="grid">
-      <thead><tr><th>Role</th><th>Occupant</th><th>Prompt</th><th></th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="empty">No seats yet.</td></tr>'}</tbody>
-    </table>
-    <div class="row">
-      <select id="newSeatDef">
-        ${free.map((d) => `<option value="${d.id}">${esc(d.role)}</option>`).join('')
-          || '<option value="">every role is already seated</option>'}
-      </select>
-      <select id="newSeatMember">
-        ${agents.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
-      </select>
-      <button id="addSeat" class="ghost">Add seat</button>
-    </div>`, null, 'Close');
-
-  const where = `?project=${PROJECT}&session=${SESSION}`;
-  const card = $('card');
-  const byId = {};
-  (S.seats || []).forEach((seat) => { byId[seat.id] = seat; });
-
-  /* One row, one Save, dead until that row changes. */
-  card.querySelectorAll('tr[data-seat]').forEach((row) => {
-    const id = row.dataset.seat;
-    watch(row, row.querySelector(`[data-save="${id}"]`),
-          () => filled(row, 'textarea'));
-  });
-
-  card.querySelectorAll('[data-save]').forEach((button) => {
-    button.onclick = () => act(async () => {
-      const id = button.dataset.save;
-      const written = card.querySelector(`[data-prompt="${id}"]`).value;
-      /* The box always shows the prompt in force. Leaving it as the role
-         wrote it means no override at all -- the server reads a blank as
-         "use the role's". */
-      const same = written.trim() === (byId[id].prompt_default || '').trim();
-      const answer = await api('PATCH', '/api/seats/' + id, {
-        project: PROJECT, session: SESSION,
-        occupant: card.querySelector(`[data-occupant="${id}"]`).value,
-        prompt: same ? '' : written});
-      if (answer.warning) note(answer.warning, 'warn');
-    }).then(closeModal);
-  });
-
-  card.querySelectorAll('[data-reset]').forEach((button) => {
-    button.onclick = () => {
-      const id = button.dataset.reset;
-      const box = card.querySelector(`[data-prompt="${id}"]`);
-      box.value = byId[id].prompt_default || '';
-      card.querySelector(`[data-note="${id}"]`).textContent =
-        'the role’s wording — edit it to make it this session’s own';
-      button.disabled = true;
-      box.dispatchEvent(new Event('input', {bubbles: true}));
-      box.focus();
-    };
-  });
-  card.querySelectorAll('[data-clear]').forEach((button) => {
-    button.onclick = () => act(() => api('POST',
-      '/api/seats/' + button.dataset.clear + '/clear',
-      {project: PROJECT, session: SESSION}));
-  });
-  card.querySelectorAll('[data-drop]').forEach((button) => {
-    button.onclick = () => act(() => api('DELETE',
-      '/api/seats/' + button.dataset.drop + where)).then(closeModal);
-  });
-  if ($('addSeat')) {
-    $('addSeat').disabled = !$('newSeatDef').value;
-    $('addSeat').onclick = () => act(() => api('POST', '/api/seats', {
-    project: PROJECT, session: SESSION,
-      seat_def: $('newSeatDef').value,
-      occupant: $('newSeatMember').value})).then(closeModal);
-  }
-}
-
-function askNewRoom() {
-  const picked = (S.seats || []).filter((s) => SEL.has(s.id));
-  modal(`<h2>New room</h2>
-    <p class="hint">${picked.map((s) => esc(s.name)).join(', ')} — and you.</p>
-    <label>Name <input id="rName" value="${esc(picked.map((s) => s.role).join('+'))}"></label>`,
-  async () => {
-    await api('POST', '/api/rooms', {project: PROJECT, session: SESSION,
-      name: $('rName').value.trim(), seats: picked.map((s) => s.id)});
-    SEL.clear();
-  }, 'Cancel', {track: true, okLabel: 'Create',
-                valid: (root) => filled(root, '#rName')});
-}
-
-/* -------------------------------------------------------------- modals */
-
-/* Save stays dead until something actually changed. A button that saves
-   what is already saved teaches you to press it without reading. */
-function watch(root, button, valid) {
-  if (!button) return null;
-  const fields = () =>
-    Array.from(root.querySelectorAll('input, select, textarea'));
-  const snap = () => fields().map((f) =>
-    f.type === 'checkbox' ? String(f.checked) : f.value).join(' ');
-
-  let saved = snap();
-  const check = () => {
-    button.disabled = !(snap() !== saved && (!valid || valid(root)));
-  };
-  root.addEventListener('input', check);
-  root.addEventListener('change', check);
-  check();
-  return {check, rebase: () => { saved = snap(); check(); }};
-}
-
-const filled = (root, selector) =>
-  Array.from(root.querySelectorAll(selector)).every((f) => f.value.trim());
-
-function modal(html, onOk, cancelLabel, options) {
-  const settings = options || {};
-  $('card').innerHTML = html +
-    `<div class="actions">
-       ${onOk ? `<button id="mOk">${esc(settings.okLabel || 'Save')}</button>` : ''}
-       <button id="mCancel" class="ghost">${esc(cancelLabel || 'Cancel')}</button>
-     </div>`;
-  $('modal').hidden = false;
-  $('mCancel').onclick = closeModal;
-  if (onOk) $('mOk').onclick = () => act(onOk).then(closeModal);
-  return settings.track
-    ? watch($('card'), $('mOk'), settings.valid)
-    : null;
-}
-
-function closeModal() { $('modal').hidden = true; }
-
-/* ------------------------------------------------------------- actions */
-function addProject() {
-  modal(`<h2>New project</h2>
-    <label>Name <input id="pName"></label>
-    <label>Folder <input id="pCwd" placeholder="where the agents will read"></label>
-    <p class="hint">It starts with a session called main, a seat for every
-      role that has a default member, and a room each.</p>`,
-  async () => {
-    await api('POST', '/api/projects', {name: $('pName').value.trim(),
-                                        cwd: $('pCwd').value.trim() || null});
-    PROJECT = null; SESSION = null; ROOM = null;
-  }, 'Cancel', {track: true, okLabel: 'Create',
-                valid: (root) => filled(root, '#pName')});
-}
-
-function removeProject() {
-  const here = project();
-  if (!here) return;
-  modal(`<h2>Remove ${esc(here.name)}</h2>
-    <label class="check"><input type="checkbox" id="pErase">
-      also erase its transcripts from the disk</label>
-    <p class="hint">Without that, the history stays on disk and only the
-      project leaves the list.</p>`,
-  async () => {
-    const erase = $('pErase').checked ? '?erase=1' : '';
-    await api('DELETE', '/api/projects/' + here.id + erase);
-    PROJECT = null; SESSION = null; ROOM = null;
-  }, 'Cancel', {okLabel: 'Remove'});
-}
-
-function addSession() {
-  modal(`<h2>New session</h2>
-    <label>Name <input id="sName"></label>
-    <p class="hint">A session starts empty: add its seats from Manage session.</p>`,
-  async () => {
-    const answer = await api('POST', '/api/sessions',
-      {project: PROJECT, name: $('sName').value.trim()});
-    SESSION = answer.session.id; ROOM = null;
-  }, 'Cancel', {track: true, okLabel: 'Create',
-                valid: (root) => filled(root, '#sName')});
-}
-
-function removeSession(id) {
-  modal(`<h2>Remove session</h2>
-    <label class="check"><input type="checkbox" id="sErase">
-      also erase its transcripts from the disk</label>`,
-  async () => {
-    const erase = $('sErase').checked ? '?erase=1&' : '?';
-    await api('DELETE', '/api/sessions/' + id + erase + 'project=' + PROJECT);
-    SESSION = null; ROOM = null;
-  }, 'Cancel', {okLabel: 'Remove'});
-}
-
-function removeRoom(id) {
-  modal(`<h2>Remove room</h2>
-    <label class="check"><input type="checkbox" id="rErase">
-      also erase its transcript from the disk</label>
-    <p class="hint">The seats stay; only this grouping goes.</p>`,
-  async () => {
-    const erase = $('rErase').checked ? '?erase=1&' : '?';
-    await api('DELETE', '/api/rooms/' + id + erase +
-              'project=' + PROJECT + '&session=' + SESSION);
-    ROOM = null;
-  }, 'Cancel', {okLabel: 'Remove'});
-}
-
-async function send() {
-  const box = $('input');
-  const text = box.value.trim();
-  if (!text || BUSY) return;
-  box.value = ''; BUSY = true; $('send').disabled = true;
-  try {
-    await api('POST', '/api/say', {project: PROJECT, session: SESSION,
-                                   room: ROOM, text});
-  } catch (exc) { note(exc.message); box.value = text; }
-  BUSY = false; $('send').disabled = false;
+async function send(){
+  const box = el('input'), text = box.value.trim();
+  if (!text || SENDING) return;
+  box.value = ''; box.style.height = '38px';
+  SENDING = true; el('sendbtn').disabled = true;
+  try { await api('POST', '/api/say',
+                  {project: PROJECT, session: SESSION, room: ROOM, text}); }
+  catch (exc) { toast(exc.message); box.value = text; }
+  SENDING = false;
   refresh();
 }
 
-/* --------------------------------------------------------------- start */
-document.querySelectorAll('#rail .tab').forEach((tab) => {
-  tab.onclick = () => {
-    document.querySelectorAll('#rail .tab').forEach((t) => t.classList.remove('on'));
-    tab.classList.add('on');
-    VIEW = tab.dataset.view;
-    render();
-  };
-});
-$('projectPick').onchange = () => {
-  PROJECT = $('projectPick').value; SESSION = null; ROOM = null; refresh();
-};
-$('projectPick').oncontextmenu = (event) => { event.preventDefault(); removeProject(); };
-$('addProject').onclick = addProject;
-$('addSession').onclick = addSession;
-$('manage').onclick = manageSession;
-$('send').onclick = send;
-$('input').onkeydown = (event) => {
-  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
-};
-$('modal').onclick = (event) => { if (event.target.id === 'modal') closeModal(); };
+let TT; function toast(t){ clearTimeout(TT);
+  document.querySelectorAll('.toast').forEach(x => x.remove());
+  const d = document.createElement('div'); d.className = 'toast'; d.textContent = t;
+  document.body.appendChild(d); TT = setTimeout(() => d.remove(), 5000); }
 
-refresh();
-setInterval(() => { if (!BUSY && $('modal').hidden) refresh(); }, 2500);
+el('addproj').onclick = addProject;
+el('managebtn').onclick = manageTeam;
+el('sendbtn').onclick = send;
+el('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
+el('input').addEventListener('input', e => {
+  e.target.style.height = '38px';
+  e.target.style.height = Math.min(180, e.target.scrollHeight) + 'px'; });
+document.querySelectorAll('.nb').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); VIEW = b.dataset.view; render(); });
+
+refresh().then(() => el('input').focus());
 </script>
 </body>
 </html>
