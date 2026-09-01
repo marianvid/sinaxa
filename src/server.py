@@ -34,6 +34,7 @@
 import argparse
 import json
 import os
+import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -273,13 +274,25 @@ def main():
 
     Handler.app = App(args.state, cwd=args.cwd,
                       opencode_port=args.opencode_port)
+
+    # `kill` sends SIGTERM, and python's default handler exits without
+    # running atexit -- which would leave every agent orphaned. Turning the
+    # signal into an ordinary exit is what makes the shutdown path the same
+    # whether you press Ctrl-C or stop the service.
+    def leave(signum, frame):
+        raise SystemExit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, leave)
+
     print("sinaxa     ->  http://%s:%d" % (HOST, args.port))
     print("state      ->  %s" % args.state)
     print("projects   ->  %d" % len(Handler.app.sinaxa.projects))
     try:
         ThreadingHTTPServer((HOST, args.port), Handler).serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         print("\nstopping agents...")
+    finally:
         Handler.app.stop()
 
 

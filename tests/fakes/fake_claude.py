@@ -6,7 +6,12 @@ exercised for real -- a real subprocess, real pipes, real framing -- without
 a network call or a subscription.
 
     FAKE_LOG    file to append the argv to, one JSON line per spawn
-    FAKE_MODE   normal | die | silent | noresult
+    FAKE_MODE   normal | die | silent | noresult | linger
+
+`linger` keeps running after its input closes, the way a real process under
+its own supervision may. It is what makes an orphan detectable: a fake that
+politely dies with its parent would let a broken shutdown pass for a good
+one.
 """
 
 import json
@@ -66,3 +71,6 @@ for line in sys.stdin:
           "result": answer, "duration_ms": 1234, "total_cost_usd": 0.0102,
           "usage": {"input_tokens": 10, "output_tokens": 5,
                     "cache_read_input_tokens": 100}})
+
+if MODE == "linger":
+    time.sleep(120)

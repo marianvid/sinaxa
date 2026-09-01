@@ -1,0 +1,178 @@
+#!/bin/sh
+# Start, stop and check on sinaxa.
+#
+#   ./sinaxa              start it and open the browser
+#   ./sinaxa start        the same, without opening anything
+#   ./sinaxa stop         stop it, and make sure no agent is left behind
+#   ./sinaxa status       is it up, and what is it holding open
+#   ./sinaxa restart
+#   ./sinaxa test         run the tests
+#   ./sinaxa log          follow the log
+#
+# Options (or the same names as environment variables):
+#   --port 8789  --state ./state  --cwd .  --opencode-port 4096
+
+set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+cd "$HERE"
+
+PORT=${SINAXA_PORT:-8789}
+STATE=${SINAXA_STATE:-"$HERE/state"}
+WORK=${SINAXA_CWD:-"$HERE"}
+OPENCODE_PORT=${SINAXA_OPENCODE_PORT:-4096}
+
+COMMAND=start
+OPEN=yes
+case ${1:-} in
+  start|stop|restart|status|test|log)  COMMAND=$1; OPEN=no; shift ;;
+  -*|"")  ;;
+  *)  echo "sinaxa: no such command: $1" >&2; exit 2 ;;
+esac
+
+while [ $# -gt 0 ]; do
+  case $1 in
+    --port)           PORT=$2; shift 2 ;;
+    --state)          STATE=$2; shift 2 ;;
+    --cwd)            WORK=$2; shift 2 ;;
+    --opencode-port)  OPENCODE_PORT=$2; shift 2 ;;
+    --no-open)        OPEN=no; shift ;;
+    -h|--help)        sed -n '2,16p' "$0" | cut -c3-; exit 0 ;;
+    *)                echo "sinaxa: no such option: $1" >&2; exit 2 ;;
+  esac
+done
+
+PID_FILE="$STATE/sinaxa.pid"
+LOG_FILE="$STATE/sinaxa.log"
+
+# ------------------------------------------------------------ the python
+# 3.8 or newer. Whatever is on PATH first, then the system one.
+find_python() {
+  for candidate in python3 /usr/bin/python3 /usr/local/bin/python3 \
+                   /opt/homebrew/bin/python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c \
+       'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' \
+       2>/dev/null; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  echo "sinaxa needs python 3.8 or newer, and found none." >&2
+  return 1
+}
+
+running() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+# Only what sinaxa itself started: its own children and theirs. A codex
+# inside ChatGPT.app, or an `opencode serve` you are running in a terminal,
+# are not ours to report and not ours to kill.
+descendants() {
+  parent=$1
+  kids=$(ps -eo pid,ppid 2>/dev/null | awk -v p="$parent" '$2 == p {print $1}')
+  for kid in $kids; do
+    echo "$kid"
+    descendants "$kid"
+  done
+}
+
+agents() {
+  running || return 0
+  for pid in $(descendants "$(cat "$PID_FILE")"); do
+    ps -o pid=,rss=,comm= -p "$pid" 2>/dev/null || true
+  done
+}
+
+# The same list, taken before the server goes, to check afterwards.
+survivors() {
+  for pid in $1; do
+    if kill -0 "$pid" 2>/dev/null; then
+      ps -o pid=,rss=,comm= -p "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+# ------------------------------------------------------------- commands
+do_start() {
+  if running; then
+    echo "sinaxa is already running (pid $(cat "$PID_FILE")) on port $PORT"
+  else
+    PYTHON=$(find_python)
+    mkdir -p "$STATE"
+    # Give it a moment to fail loudly rather than a browser tab on nothing.
+    nohup "$PYTHON" -m src.server --port "$PORT" --state "$STATE" \
+          --cwd "$WORK" --opencode-port "$OPENCODE_PORT" \
+          >>"$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+    sleep 1
+    if ! running; then
+      echo "sinaxa did not start. The last of $LOG_FILE:" >&2
+      tail -n 15 "$LOG_FILE" >&2
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+    echo "sinaxa    http://127.0.0.1:$PORT   (pid $(cat "$PID_FILE"))"
+    echo "state     $STATE"
+    echo "log       $LOG_FILE"
+  fi
+  if [ "$OPEN" = yes ]; then
+    (command -v open >/dev/null 2>&1 && open "http://127.0.0.1:$PORT") ||
+    (command -v xdg-open >/dev/null 2>&1 && xdg-open "http://127.0.0.1:$PORT") ||
+    true
+  fi
+}
+
+do_stop() {
+  if running; then
+    pid=$(cat "$PID_FILE")
+    born=$(descendants "$pid")
+    # A plain TERM: the server takes its agents down on the way out, and
+    # atexit catches whatever the server did not.
+    kill "$pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -9 "$pid" 2>/dev/null || true
+    echo "stopped (pid $pid)"
+  else
+    echo "sinaxa is not running"
+    born=""
+  fi
+  rm -f "$PID_FILE"
+
+  left=$(survivors "$born")
+  if [ -n "$left" ]; then
+    echo
+    echo "Agents outlived the server. This should not happen -- say so:" >&2
+    echo "$left" >&2
+    echo "Kill them with: kill <pid>" >&2
+  fi
+}
+
+do_status() {
+  if running; then
+    echo "running   pid $(cat "$PID_FILE")   http://127.0.0.1:$PORT"
+  else
+    echo "not running"
+  fi
+  echo "state     $STATE"
+  left=$(agents)
+  if [ -n "$left" ]; then
+    echo "agents:"
+    echo "$left" | awk '{printf "  %-7s %6.0f MB  %s\n", $1, $2/1024, $3}'
+  else
+    echo "agents:   none running"
+  fi
+}
+
+case $COMMAND in
+  start)   do_start ;;
+  stop)    do_stop ;;
+  restart) do_stop; do_start ;;
+  status)  do_status ;;
+  test)    exec "$(find_python)" -W ignore::ResourceWarning \
+                -m unittest discover -s tests ;;
+  log)     mkdir -p "$STATE"; touch "$LOG_FILE"; exec tail -f "$LOG_FILE" ;;
+esac

@@ -226,6 +226,70 @@ class AppShutdown(unittest.TestCase):
             self.assertTrue(gone(pid), "an agent outlived the app")
         self.assertEqual(open_files(), before)
 
+    def test_a_terminated_server_takes_its_agents_with_it(self):
+        """`kill` sends SIGTERM, and python's default handler exits without
+        running atexit. Without a handler of our own, every agent is
+        orphaned -- which is exactly what the start script caught."""
+        import json
+        import socket
+        import urllib.request
+
+        root = tempfile.mkdtemp(prefix="sinaxa-state-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        binary, folder = executable("fake_claude.py")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+
+        server = subprocess.Popen(
+            [sys.executable, "-m", "src.server", "--port", str(port),
+             "--state", root, "--cwd", root],
+            cwd=ROOT, env=dict(os.environ, FAKE_MODE="linger"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(server.wait)
+        self.addCleanup(server.kill)
+
+        base = "http://127.0.0.1:%d" % port
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/api/state", timeout=2).read()
+                break
+            except Exception:
+                time.sleep(0.2)
+
+        def call(path, body):
+            request = urllib.request.Request(
+                base + path, json.dumps(body).encode(),
+                {"Content-Type": "application/json"})
+            return json.loads(urllib.request.urlopen(request, timeout=30).read())
+
+        call("/api/members", {"name": "Marian", "kind": "human"})
+        member = call("/api/members", {"name": "Claude", "engine": "claude",
+                                       "binary": binary})["member"]
+        call("/api/seatdefs", {"role": "architect", "prompt": "You design.",
+                               "default_member": member["id"]})
+        project = call("/api/projects", {"name": "sinaxa"})["project"]
+        state = json.loads(urllib.request.urlopen(
+            base + "/api/state?project=" + project["id"], timeout=10).read())
+        room = next(r for r in state["rooms"] if r["kind"] == "all")
+        call("/api/say", {"project": project["id"], "session": state["session"],
+                          "room": room["id"], "text": "hello"})
+
+        children = subprocess.run(
+            ["ps", "-eo", "pid,ppid"], capture_output=True, text=True).stdout
+        agents = [int(line.split()[0]) for line in children.splitlines()[1:]
+                  if line.split() and line.split()[1] == str(server.pid)]
+        self.assertTrue(agents, "the server started no agent to speak of")
+
+        server.terminate()
+        server.wait(timeout=15)
+        time.sleep(0.5)
+        for pid in agents:
+            self.assertTrue(gone(pid),
+                            "an agent outlived a terminated server")
+
     def test_stopping_the_app_twice_is_harmless(self):
         from src.app import App
 
