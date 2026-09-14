@@ -29,4 +29,6 @@ or the member is swapped, we replay from the thread.
 
 ## Status
 
-Early. Design and mockups only.
+Early working prototype. The UI is split into four independent sections:
+Projects, Members, Seats, and Settings. Each section owns its HTML, CSS, and
+JavaScript so it can evolve without changing the other pages.

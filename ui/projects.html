@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Projects · sinaxa</title>
+<link rel="stylesheet" href="/projects.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="brand"><span class="mark">sinaxa</span></div>
+    <div class="hd">Projects <u id="addproj" title="New project">+</u></div>
+    <div class="scroll">
+      <div class="node" id="projnode"></div>
+      <div class="sessions" id="tree"></div>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <a class="nb on" href="/projects.html"><i>▤</i>Projects</a>
+      <a class="nb" href="/members.html"><i>◉</i>Members</a>
+      <a class="nb" href="/seats.html"><i>▭</i>Seats</a>
+      <a class="nb" href="/settings.html"><i>⚙</i>Settings</a>
+    </nav>
+  </aside>
+
+  <section class="main">
+    <header class="top">
+      <div class="title" id="title"></div>
+      <div class="seatbar" id="seatbar"></div>
+      <div class="grow"></div>
+      <button class="chip" id="managebtn">Manage team…</button>
+    </header>
+    <div class="thread" id="thread"></div>
+    <div class="composer" id="composer">
+      <div class="cbox">
+        <div class="pasted" id="pasted"></div>
+        <textarea id="input" placeholder="Message the room…   paste an image to show it"></textarea>
+        <div class="ctools"><div class="grow"></div><button class="send" id="sendbtn">Send</button></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="statusbar" id="statusbar"></div>
+</div>
+
+<script src="/projects.js"></script>
+</body>
+</html>

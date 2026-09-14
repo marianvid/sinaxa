@@ -84,7 +84,19 @@ class OverHttp(unittest.TestCase):
 
 class Page(OverHttp):
     def test_the_page_and_its_stylesheet_are_served(self):
-        for path, marker in (("/", "sinaxa"), ("/sinaxa.css", "--accent")):
+        for path, marker in (("/", "sinaxa"),
+                             ("/projects.html", "Projects"),
+                             ("/projects.css", "--accent"),
+                             ("/projects.js", "renderThread"),
+                             ("/members.html", "Members"),
+                             ("/members.css", "--accent"),
+                             ("/members.js", "memberForm"),
+                             ("/seats.html", "Seats"),
+                             ("/seats.css", "--accent"),
+                             ("/seats.js", "seatForm"),
+                             ("/settings.html", "Settings"),
+                             ("/settings.css", "--accent"),
+                             ("/settings.js", "sinaxa-theme")):
             with urllib.request.urlopen(self.base + path, timeout=10) as answer:
                 self.assertEqual(answer.status, 200)
                 self.assertIn(marker, answer.read().decode())

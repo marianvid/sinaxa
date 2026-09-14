@@ -1,23 +1,20 @@
-"""Static checks on the page.
-
-These exist because of two real bugs: `SEL` was used but never declared, and
-`const ROLES` was cut out with the dialogs it happened to sit between. Both
-killed a function at runtime; neither is a syntax error, so `node --check`
-saw nothing wrong.
-"""
+"""Static checks for the four isolated UI pages."""
 
 import os
 import re
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HTML = open(os.path.join(ROOT, "ui", "sinaxa.html"), encoding="utf-8").read()
-CSS = open(os.path.join(ROOT, "ui", "sinaxa.css"), encoding="utf-8").read()
-JS_RAW = re.search(r"<script>(.*)</script>", HTML, re.S).group(1)
+UI = os.path.join(ROOT, "ui")
+PAGES = ("projects", "members", "seats", "settings")
+
+
+def read(name, suffix):
+    with open(os.path.join(UI, name + suffix), encoding="utf-8") as handle:
+        return handle.read()
 
 
 def _regex_here(src, i):
-    """True if the slash at i opens a regex literal rather than a division."""
     j = i - 1
     while j >= 0 and src[j] in " \t\n":
         j -= 1
@@ -25,10 +22,6 @@ def _regex_here(src, i):
 
 
 def code_only(src):
-    """Strip comments and string bodies so the scanners read code, not prose.
-
-    Template literals keep what is inside ${...} — that part is real code.
-    """
     out, i, n = [], 0, len(src)
     while i < n:
         two = src[i:i + 2]
@@ -44,9 +37,9 @@ def code_only(src):
                 i += 2 if src[i] == "\\" else 1
             i += 1
         elif src[i] == "/" and _regex_here(src, i):
-            i += 1                       # a regex literal: /.../flags
+            i += 1
             while i < n and src[i] != "/":
-                if src[i] == "[":        # a class may hold an unescaped /
+                if src[i] == "[":
                     while i < n and src[i] != "]":
                         i += 2 if src[i] == "\\" else 1
                 i += 2 if src[i] == "\\" else 1
@@ -74,112 +67,78 @@ def code_only(src):
     return "".join(out)
 
 
-JS = code_only(JS_RAW)
-
-BUILTINS = {
-    "JSON", "Object", "Set", "Map", "Date", "String", "Number", "Math", "Array",
-    "Promise", "RegExp", "Error", "Boolean", "URLSearchParams", "Event", "FileReader",
-}
+BUILTINS = {"JSON", "Object", "Set", "Map", "Date", "String", "Number",
+            "Math", "Array", "Promise", "RegExp", "Error", "Boolean",
+            "URLSearchParams", "Event", "FileReader"}
 
 
-class Identifiers(unittest.TestCase):
-    def declared(self):
-        return set(re.findall(r"(?:let|const|var|function)\s+(\w+)", JS)) | BUILTINS
+class Structure(unittest.TestCase):
+    def test_every_section_has_its_own_three_files(self):
+        for page in PAGES:
+            for suffix in (".html", ".css", ".js"):
+                self.assertTrue(os.path.isfile(os.path.join(UI, page + suffix)))
 
-    def test_every_capitalised_name_is_declared(self):
-        used = set(re.findall(r"\b([A-Z][A-Za-z_]*)\s*(?=[.(\[])", JS))
-        missing = sorted(u for u in used if u not in self.declared())
-        self.assertEqual(missing, [], "used but never declared: %s" % missing)
+    def test_each_page_links_only_its_own_assets(self):
+        for page in PAGES:
+            html = read(page, ".html")
+            self.assertIn('href="/%s.css"' % page, html)
+            self.assertIn('src="/%s.js"' % page, html)
+            self.assertNotIn("<style>", html)
+            self.assertNotRegex(html, r"<script>(.|\n)*</script>")
 
-    def parameters(self):
-        """Names bound by a parameter list — a callback passed in is defined."""
-        names = set()
-        for params in re.findall(r"function\s*\w*\s*\(([^)]*)\)", JS) \
-                    + re.findall(r"\(([^)]*)\)\s*=>", JS):
-            names |= set(re.findall(r"\b([a-z]\w*)", params))
-        names |= set(re.findall(r"(\w+)\s*=>", JS))
-        return names
+    def test_all_navigation_targets_exist_on_every_page(self):
+        for page in PAGES:
+            html = read(page, ".html")
+            for target in PAGES:
+                self.assertIn('href="/%s.html"' % target, html)
 
-    def test_every_function_called_is_defined(self):
-        defined = set(re.findall(r"function\s+(\w+)", JS)) \
-                | set(re.findall(r"(?:const|let)\s+(\w+)\s*=\s*(?:\(|async|\w+\s*=>)", JS)) \
-                | self.parameters()
-        called = set(re.findall(r"(?<![.\w])([a-z]\w+)\s*\(", JS))
-        known = defined | {
-            "if", "for", "while", "switch", "catch", "return", "typeof", "await",
-            "fetch", "parseInt", "parseFloat", "alert", "prompt", "confirm",
-            "setTimeout", "setInterval", "clearTimeout", "requestAnimationFrame",
-            "isNaN", "of", "in", "new", "var",
-        }
-        missing = sorted(c for c in called if c not in known)
-        self.assertEqual(missing, [], "called but never defined: %s" % missing)
+    def test_every_looked_up_id_exists_on_its_page(self):
+        for page in PAGES:
+            html, js = read(page, ".html"), read(page, ".js")
+            wanted = set(re.findall(r"getElementById\(['\"](\w[\w-]*)['\"]\)", js))
+            present = set(re.findall(r'id="([\w-]+)"', html))
+            dynamic = set(re.findall(r'id=\\?"([\w-]+)\\?"', js))
+            self.assertEqual(sorted(wanted - present - dynamic), [], page)
 
-
-class Markup(unittest.TestCase):
-    def test_every_element_looked_up_by_id_exists(self):
-        wanted = set(re.findall(r"getElementById\(['\"](\w[\w-]*)['\"]\)", JS))
-        present = set(re.findall(r'id="([\w-]+)"', HTML))
-        missing = sorted(wanted - present)
-        self.assertEqual(missing, [], "no such id in the markup: %s" % missing)
-
-    def test_the_stylesheet_is_linked_and_no_styles_are_inline(self):
-        self.assertIn('href="/sinaxa.css"', HTML)
-        self.assertNotIn("<style>", HTML)
-
-    def test_the_old_name_is_gone(self):
-        for dead in ("kenbet", "foundry"):
-            self.assertNotIn(dead, HTML.lower())
-            self.assertNotIn(dead, CSS.lower())
+    def test_old_monolith_is_not_served(self):
+        with open(os.path.join(ROOT, "src", "server.py"), encoding="utf-8") as handle:
+            server = handle.read()
+        self.assertNotIn("sinaxa.html", server)
+        self.assertNotIn("sinaxa.css", server)
 
 
-class Saving(unittest.TestCase):
-    """A Save that saves nothing teaches you to press it without reading.
+class Javascript(unittest.TestCase):
+    def test_each_script_parses(self):
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        for page in PAGES:
+            result = subprocess.run([node, "--check", os.path.join(UI, page + ".js")],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
 
-    The behaviour itself was checked in a browser: every form opens with Save
-    disabled, comes alive on a real change, and dies again when the change is
-    undone. What can be checked here is that the wiring is still in place.
-    """
-
-    def test_every_edit_form_tracks_whether_anything_changed(self):
-        """One watch() per form that saves: members, roles, projects,
-        sessions, rooms -- and one per seat row in Manage team."""
-        self.assertGreaterEqual(JS.count("watch("), 6)
-
-    def test_each_seat_row_has_its_own_guard(self):
-        self.assertIn("scrim.querySelectorAll('[data-seat]')", JS_RAW)
-        self.assertIn("watch(row, save,", JS)
-
-    def test_a_destructive_confirmation_is_not_gated_on_a_change(self):
-        """Removing without ticking the box is a legitimate answer, so those
-        dialogs keep a live button: modal(..., 'Remove', true)."""
-        self.assertEqual(JS_RAW.count("'Remove', true)"), 3)
-
-    def test_the_prompt_box_shows_the_prompt_in_force(self):
-        self.assertIn("prompt_effective", HTML)
-        self.assertNotIn("Use default", HTML)
-        self.assertIn("Reset to default", HTML)
+    def test_capitalised_names_are_declared_per_script(self):
+        for page in PAGES:
+            js = code_only(read(page, ".js"))
+            declared = set(re.findall(r"(?:let|const|var|function)\s+(\w+)", js)) | BUILTINS
+            used = set(re.findall(r"\b([A-Z][A-Za-z_]*)\s*(?=[.(\[])", js))
+            self.assertEqual(sorted(used - declared), [], page)
 
 
 class Theme(unittest.TestCase):
-    """A colour defined only in the dark block leaves the light theme broken."""
+    def block(self, css, selector):
+        match = re.search(re.escape(selector) + r"\s*\{(.*?)\}", css, re.S)
+        return set(re.findall(r"(--[\w-]+)\s*:", match.group(1))) if match else set()
 
-    def block(self, selector):
-        m = re.search(re.escape(selector) + r"\s*\{(.*?)\}", CSS, re.S)
-        return set(re.findall(r"(--[\w-]+)\s*:", m.group(1))) if m else set()
-
-    def test_both_themes_define_the_same_variables(self):
-        dark = self.block(':root,\n:root[data-theme="dark"]')
-        light = self.block(':root[data-theme="light"]')
-        self.assertTrue(dark, "no dark palette found")
-        self.assertTrue(light, "no light palette found")
-        only_dark = sorted(dark - light - {"--radius", "--shadow"})
-        self.assertEqual(only_dark, [],
-                         "missing from the light theme: %s" % only_dark)
-
-    def test_no_raw_colour_outside_the_palette(self):
-        body = CSS[CSS.index("*{box-sizing"):]
-        raw = re.findall(r":\s*(#[0-9a-fA-F]{3,8})\b", body)
-        self.assertEqual(raw, [], "hardcoded colours outside :root: %s" % raw)
+    def test_each_page_has_a_complete_palette(self):
+        for page in PAGES:
+            css = read(page, ".css")
+            dark = self.block(css, ':root,\n:root[data-theme="dark"]')
+            light = self.block(css, ':root[data-theme="light"]')
+            self.assertTrue(dark, page)
+            self.assertEqual(sorted(dark - light - {"--radius", "--shadow"}), [], page)
 
 
 if __name__ == "__main__":

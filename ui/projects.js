@@ -1,52 +1,7 @@
-<!doctype html>
-<html lang="en" data-theme="dark">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sinaxa</title>
-<link rel="stylesheet" href="/sinaxa.css">
-</head>
-<body>
-<div class="app">
+document.documentElement.dataset.theme = localStorage.getItem('sinaxa-theme') || 'dark';
 
-  <aside class="side">
-    <div class="brand"><span class="mark">sinaxa</span></div>
-    <div class="hd">Projects <u id="addproj" title="New project">+</u></div>
-    <div class="scroll">
-      <div class="node" id="projnode"></div>
-      <div class="sessions" id="tree"></div>
-    </div>
-    <nav class="nav">
-      <div class="nb on" data-view="rooms"><i>▤</i>Projects</div>
-      <div class="nb" data-view="members"><i>◉</i>Members</div>
-      <div class="nb" data-view="seats"><i>▭</i>Seats</div>
-    </nav>
-  </aside>
-
-  <section class="main">
-    <header class="top">
-      <div class="title" id="title"></div>
-      <div class="seatbar" id="seatbar"></div>
-      <div class="grow"></div>
-      <button class="chip" id="managebtn">Manage team…</button>
-    </header>
-    <div class="thread" id="thread"></div>
-    <div class="composer" id="composer">
-      <div class="cbox">
-        <div class="pasted" id="pasted"></div>
-        <textarea id="input" placeholder="Message the room…   paste an image to show it"></textarea>
-        <div class="ctools"><div class="grow"></div><button class="send" id="sendbtn">Send</button></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="statusbar" id="statusbar"></div>
-</div>
-
-<script>
 /* ------------------------------------------------------------------ state */
 let S = null;              /* last /api/state payload */
-let VIEW = 'rooms';        /* rooms | members | seats */
 let PROJECT = null, SESSION = null, ROOM = null;
 let OPEN = true;           /* is the session expanded in the sidebar */
 let SEL = new Set();       /* seat ids picked with cmd/ctrl-click */
@@ -78,7 +33,6 @@ const memberById = id => (S.members || []).find(m => m.id === id);
 const initial  = m => (m && m.name ? m.name[0].toUpperCase() : '·');
 const liveOf   = seatId => ((S.status || {}).agents || [])
   .find(a => a.seat === seatId) || {};
-const engineOf = id => (S.engines || []).find(e => e.id === id) || {};
 const agents   = () => (S.members || []).filter(m => m.kind !== 'human');
 
 /* ------------------------------------------------------------------ sidebar */
@@ -175,7 +129,6 @@ function renderHead(){
     ROOM = mainRm() ? mainRm().id : null; refresh(); };
 
   const bar = el('seatbar'); bar.innerHTML = '';
-  if (VIEW !== 'rooms') return;
   (S.seats || []).forEach(seat => {
     const mem = memberById(seat.occupant);
     const a = liveOf(seat.id);
@@ -259,75 +212,6 @@ function renderPasted(){
     x.onclick = () => { PASTED.splice(+x.dataset.drop, 1); renderPasted(); });
 }
 
-/* ------------------------------------------------------------------ views */
-function renderMembers(){
-  const th = el('thread'); th.className = 'view';
-  const rows = (S.members || []).map(m => {
-    const engine = engineOf(m.engine);
-    return `<div class="row">
-      <span class="sw" style="background:${m.colour}">${esc(initial(m))}</span>
-      <span class="nm">${esc(m.name)}</span>
-      <span class="meta">${m.kind === 'human' ? 'human · the lead'
-                                              : esc(engine.label || m.engine)}</span>
-      <span class="say">${esc(m.model || 'default model')}${
-          m.effort ? ' · ' + esc(m.effort) : ''}${
-          m.binary ? ' · ' + esc(m.binary) : ''}</span>
-      <span class="tools">${m.kind === 'human' ? ''
-        : `<button class="btn" data-edit="${m.id}">Edit</button>
-           <button class="btn danger" data-del="${m.id}">Remove</button>`}</span>
-    </div>`;
-  }).join('');
-  th.innerHTML = `<h3>Members</h3>
-    <div class="lead">Who can take a seat: you, and one entry per engine you
-      have. A member says how an occupant is started — never what it is told.
-      That is the seat's prompt.</div>
-    <div class="bar"><button class="btn primary" id="addmem">Add member</button></div>
-    <div class="rows">${rows || '<div class="empty">Nobody yet.</div>'}</div>`;
-  el('addmem').onclick = () => memberForm(null);
-  th.querySelectorAll('[data-edit]').forEach(b =>
-    b.onclick = () => memberForm(memberById(b.dataset.edit)));
-  th.querySelectorAll('[data-del]').forEach(b =>
-    b.onclick = () => act(() => api('DELETE', '/api/members/' + b.dataset.del)));
-}
-
-function renderSeats(){
-  const th = el('thread'); th.className = 'view';
-  const here = {};
-  (S.seats || []).forEach(s => { here[s.seat_def] = s; });
-  const rows = (S.seat_defs || []).map(d => {
-    const mem = memberById(d.default_member);
-    const seat = here[d.id];
-    const live = seat ? liveOf(seat.id) : null;
-    const state = !seat ? '<span class="idle">not in this session</span>'
-      : seat.trouble ? `<span class="warn">${esc(seat.trouble)}</span>`
-      : (live && live.turns) ? `<span class="live">live · ${live.turns} turns
-           · ${live.tokens} tok</span>`
-      : '<span class="idle">idle</span>';
-    return `<div class="row${seat && seat.trouble ? ' bad' : ''}">
-      <span class="sw" style="background:${mem ? mem.colour : 'var(--bg3)'}">${
-          esc(mem ? initial(mem) : '·')}</span>
-      <span class="nm">${esc(d.role)}</span>
-      <span class="meta">${esc(mem ? mem.name : 'no default member')}</span>
-      <span class="say">${esc(d.prompt)}</span>
-      <span class="meta">${state}</span>
-      <span class="tools">
-        <button class="btn" data-edit="${d.id}">Edit</button>
-        <button class="btn danger" data-del="${d.id}">Remove</button></span>
-    </div>`;
-  }).join('');
-  th.innerHTML = `<h3>Seats</h3>
-    <div class="lead">The roles, defined once for the whole of sinaxa. A role
-      carries the prompt its occupant is given, and a default member; a new
-      project starts with a seat for every role that has one.</div>
-    <div class="bar"><button class="btn primary" id="adddef">Add role</button></div>
-    <div class="rows">${rows || '<div class="empty">No roles yet.</div>'}</div>`;
-  el('adddef').onclick = () => seatDefForm(null);
-  th.querySelectorAll('[data-edit]').forEach(b =>
-    b.onclick = () => seatDefForm((S.seat_defs || []).find(d => d.id === b.dataset.edit)));
-  th.querySelectorAll('[data-del]').forEach(b =>
-    b.onclick = () => act(() => api('DELETE', '/api/seatdefs/' + b.dataset.del)));
-}
-
 /* ------------------------------------------------------------------ status */
 function renderStatus(){
   const s = S.status || {}, bar = el('statusbar');
@@ -350,19 +234,17 @@ function renderStatus(){
 
 function render(){
   renderTree(); renderHead();
-  if (VIEW === 'rooms') renderThread();
-  if (VIEW === 'members') renderMembers();
-  if (VIEW === 'seats') renderSeats();
+  renderThread();
   renderStatus();
 
   const r = room();
-  el('composer').style.display = (VIEW === 'rooms' && r) ? '' : 'none';
-  el('managebtn').style.display = (VIEW === 'rooms' && SESSION) ? '' : 'none';
+  el('composer').style.display = r ? '' : 'none';
+  el('managebtn').style.display = SESSION ? '' : 'none';
   el('sendbtn').disabled = SENDING;
   if (r) el('input').placeholder = r.kind === 'private'
       ? 'Message ' + ((seatById(r.seats[0]) || {}).name || r.name) + '…'
       : 'Message the room…   @Name to address one';
-  if (VIEW === 'rooms' && STICK) requestAnimationFrame(() => {
+  if (STICK) requestAnimationFrame(() => {
     const th = el('thread'); th.scrollTop = th.scrollHeight; });
 }
 
@@ -450,87 +332,6 @@ function watch(root, button, valid, fresh){
 }
 const filled = (root, sel) =>
   Array.from(root.querySelectorAll(sel)).every(f => f.value.trim());
-
-/* ------------------------------------------------------------------ members */
-function memberForm(member){
-  const list = S.engines || [];
-  const chosen = member ? member.engine : (list[0] || {}).id;
-  const scrim = modal(`<h3>${member ? 'Edit member' : 'Add member'}</h3>
-    <div class="lead">How this occupant is started. Not what it is told — that
-      is the seat's prompt.</div>
-    <label class="field">Name <input id="mName" value="${esc(member ? member.name : '')}"></label>
-    <label class="field">Engine <select id="mEngine">
-      ${list.map(e => `<option value="${e.id}" ${e.id === chosen ? 'selected' : ''}>${
-          esc(e.label)}</option>`).join('')}</select>
-      <div class="why" id="mWhy"></div></label>
-    <label class="field">Model <span id="mModel"></span></label>
-    <label class="field">Effort <span id="mEffort"></span></label>
-    <label class="field">Binary <input id="mBinary" placeholder="leave empty for the default"
-      value="${esc(member ? (member.binary || '') : '')}"></label>`,
-  async () => {
-    const body = {name: el('mName').value.trim(), engine: el('mEngine').value,
-      model: el('mModelIn') ? el('mModelIn').value.trim() : null,
-      effort: el('mEffortIn') ? (el('mEffortIn').value || null) : null,
-      binary: el('mBinary').value.trim() || null};
-    if (member) await api('PATCH', '/api/members/' + member.id, body);
-    else await api('POST', '/api/members', body);
-  }, member ? 'Save' : 'Add');
-
-  const guard = watch(scrim, scrim.querySelector('[data-ok]'),
-                      r => filled(r, '#mName'), !member);
-
-  const paint = async () => {
-    const engine = engineOf(el('mEngine').value);
-    el('mWhy').textContent = engine.note || '';
-    const current = member && member.engine === engine.id ? (member.model || '') : '';
-    let models = engine.models || [];
-    if (engine.models_from_engine){
-      el('mModel').innerHTML = '<i class="why">asking the engine…</i>';
-      models = (await api('GET', '/api/models?engine=' + engine.id)
-                  .catch(() => ({models: []}))).models;
-    }
-    el('mModel').innerHTML = (models.length && !engine.models_are_a_hint)
-      ? `<select id="mModelIn">${models.map(m =>
-           `<option ${m === current ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>`
-      : `<input id="mModelIn" list="mList" value="${esc(current)}">
-         <datalist id="mList">${models.map(m => `<option>${esc(m)}</option>`).join('')}</datalist>`;
-    const efforts = engine.efforts || [];
-    el('mEffort').innerHTML = efforts.length
-      ? `<select id="mEffortIn">${efforts.map(e => `<option ${
-          ((member && member.effort) || engine.effort_default) === e ? 'selected' : ''
-         }>${esc(e)}</option>`).join('')}</select>`
-      : '<i class="why">not set here for this engine</i>';
-  };
-  /* The model and effort controls do not exist until the engine is known, so
-     "unchanged" can only be recorded after the first paint. A later repaint
-     is a change the person made, and must leave Save alive. */
-  el('mEngine').onchange = () => paint().then(() => guard && guard.check());
-  paint().then(() => guard && guard.rebase());
-}
-
-/* -------------------------------------------------------------------- roles */
-function seatDefForm(def){
-  const scrim = modal(`<h3>${def ? 'Edit role' : 'Add role'}</h3>
-    <div class="lead">A role is what its occupant is told it does. The prompt
-      is not optional — a seat without instructions is not a state we allow.</div>
-    <label class="field">Role <input id="dRole" value="${esc(def ? def.role : '')}"></label>
-    <label class="field">Prompt
-      <textarea id="dPrompt" rows="6">${esc(def ? def.prompt : '')}</textarea>
-      <div class="why">A session may word it differently for its own seat.</div></label>
-    <label class="field">Default member <select id="dWho">
-      <option value="">— none —</option>
-      ${agents().map(m => `<option value="${m.id}" ${
-          def && def.default_member === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
-      </select>
-      <div class="why">A new project seats every role that has one.</div></label>`,
-  async () => {
-    const body = {role: el('dRole').value.trim(), prompt: el('dPrompt').value,
-                  default_member: el('dWho').value || null};
-    if (def) await api('PATCH', '/api/seatdefs/' + def.id, body);
-    else await api('POST', '/api/seatdefs', body);
-  }, def ? 'Save' : 'Add');
-  watch(scrim, scrim.querySelector('[data-ok]'), r => filled(r, '#dRole, #dPrompt'), !def);
-}
 
 /* ----------------------------------------------------------- manage team */
 function manageTeam(){
@@ -780,11 +581,4 @@ el('input').addEventListener('keydown', e => {
 el('input').addEventListener('input', e => {
   e.target.style.height = '38px';
   e.target.style.height = Math.min(180, e.target.scrollHeight) + 'px'; });
-document.querySelectorAll('.nb').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.nb').forEach(x => x.classList.remove('on'));
-  b.classList.add('on'); VIEW = b.dataset.view; render(); });
-
 refresh().then(() => el('input').focus());
-</script>
-</body>
-</html>

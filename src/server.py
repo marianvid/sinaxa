@@ -49,8 +49,20 @@ HOST, PORT = "127.0.0.1", 8789
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 UI = os.path.join(ROOT, "ui")
-PAGE = os.path.join(UI, "sinaxa.html")
-STYLE = os.path.join(UI, "sinaxa.css")
+STATIC = {
+    "/projects.html": ("projects.html", "text/html; charset=utf-8"),
+    "/projects.css": ("projects.css", "text/css; charset=utf-8"),
+    "/projects.js": ("projects.js", "text/javascript; charset=utf-8"),
+    "/members.html": ("members.html", "text/html; charset=utf-8"),
+    "/members.css": ("members.css", "text/css; charset=utf-8"),
+    "/members.js": ("members.js", "text/javascript; charset=utf-8"),
+    "/seats.html": ("seats.html", "text/html; charset=utf-8"),
+    "/seats.css": ("seats.css", "text/css; charset=utf-8"),
+    "/seats.js": ("seats.js", "text/javascript; charset=utf-8"),
+    "/settings.html": ("settings.html", "text/html; charset=utf-8"),
+    "/settings.css": ("settings.css", "text/css; charset=utf-8"),
+    "/settings.js": ("settings.js", "text/javascript; charset=utf-8"),
+}
 
 
 MIME = {".png": "image/png", ".jpg": "image/jpeg",
@@ -128,9 +140,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
-            return self.send_file(PAGE, "text/html; charset=utf-8")
-        if path == "/sinaxa.css":
-            return self.send_file(STYLE, "text/css; charset=utf-8")
+            path = "/projects.html"
+        if path in STATIC:
+            name, mime = STATIC[path]
+            return self.send_file(os.path.join(UI, name), mime)
         if path == "/api/state":
             query = self.query
             with self.lock:
