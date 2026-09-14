@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sinaxa: Run server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.server",
+      "args": [
+        "--port", "8789",
+        "--state", "${workspaceFolder}/state",
+        "--cwd", "${workspaceFolder}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}

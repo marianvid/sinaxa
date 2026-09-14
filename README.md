@@ -25,6 +25,19 @@ restart checkpoints; Sinaxa's transcript remains the source of truth.
 
 ## Run
 
+### From VS Code
+
+Open this repository as the workspace, then use **Run and Debug → Sinaxa: Run
+server**. `F5` starts it in the integrated terminal and the red Stop button or
+`Shift+F5` stops it cleanly. Because the server stays in the foreground, its
+output and any exception remain visible while you inspect the implementation.
+
+Without the debugger, run **Terminal → Run Task… → Sinaxa: Run**. Stop it with
+`Ctrl+C` in its dedicated terminal. **Sinaxa: Test** is also available as the
+default test task.
+
+### From a terminal
+
 ```bash
 python -m src.server
 ```
