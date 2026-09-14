@@ -1,26 +1,45 @@
-<!doctype html><html lang="en" data-theme="dark"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Projects · Sinaxa</title><link rel="stylesheet" href="/projects.css"></head><body>
-<div class="app">
- <aside><div class="brand">sinaxa</div><div class="section-title">Projects <button id="newProject">+</button></div>
-  <div id="projects" class="projects"></div>
-  <nav><a class="active" href="/projects.html">Projects</a><a href="/members.html">Members</a><a href="/engines.html">Engines</a><a href="/settings.html">Settings</a></nav>
- </aside>
- <section class="workspace">
-  <header><div><div class="eyebrow" id="projectState"></div><h1 id="projectTitle">Projects</h1></div>
-   <div class="actions"><button id="toggleProject">Close project</button><button class="primary" id="newSession">+ Session</button></div></header>
-  <div class="layout">
-   <section class="rail"><div class="rail-title">Seats <button id="newSeat">+</button></div><div id="seats"></div>
-    <div class="rail-title spaced">Sessions <button id="newSessionSmall">+</button></div><div id="sessions"></div></section>
-   <main class="conversation"><div class="conversation-head"><div><h2 id="sessionTitle">Select a project</h2><div id="participants"></div></div>
-    <div class="conversation-actions"><button id="clearContext">Clear context</button><button id="sessionMenu">•••</button></div></div>
-    <div class="search"><input id="search" placeholder="Search this session"></div>
-    <div id="messages" class="messages"></div>
-    <div id="composer" class="composer"><div id="attachments"></div><textarea id="message" placeholder="Write a message…"></textarea>
-     <div class="composer-tools"><span><button data-format="**">B</button><button data-format="_">I</button><button id="attach">📎</button><input id="files" type="file" accept="image/*" multiple hidden></span><button class="send" id="send">Send</button></div></div>
-   </main>
-  </div>
- </section>
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Projects · sinaxa</title><link rel="stylesheet" href="/projects.css">
+</head>
+<body><div class="app">
+  <aside class="side">
+    <div class="brand"><span class="mark">sinaxa</span></div>
+    <div class="hd">Projects <u id="newProject" title="New project">+</u></div>
+    <div class="scroll">
+      <div id="projects" class="projects"></div>
+      <div class="sidebar-group"><span>Seats</span><u id="newSeat" title="Add seat">+</u></div>
+      <div id="seats" class="sidebar-list"></div>
+      <div class="sidebar-group"><span>Sessions</span><u id="newSessionSmall" title="New session">+</u></div>
+      <div id="sessions" class="sidebar-list"></div>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <a class="nb on" href="/projects.html"><i>▤</i>Projects</a>
+      <a class="nb" href="/members.html"><i>◉</i>Members</a>
+      <a class="nb" href="/engines.html"><i>⌘</i>Engines</a>
+      <a class="nb" href="/settings.html"><i>⚙</i>Settings</a>
+    </nav>
+  </aside>
+  <section class="main">
+    <header class="top">
+      <div class="title"><span class="proj" id="projectTitle">Projects</span><span class="dot">/</span><span class="sess" id="sessionTitle">Select a project</span><span class="sub" id="projectState"></span></div>
+      <div class="seatbar" id="participants"></div><div class="grow"></div>
+      <button class="chip" id="toggleProject">Close project</button>
+      <button class="chip primary" id="newSession">+ Session</button>
+      <button class="chip" id="clearContext">Clear context</button>
+      <button class="chip icon" id="sessionMenu" aria-label="Session options">•••</button>
+    </header>
+    <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"></div>
+    <div id="messages" class="thread"></div>
+    <div id="composer" class="composer"><div class="cbox">
+      <div id="attachments" class="pasted"></div>
+      <textarea id="message" placeholder="Write a message…"></textarea>
+      <div class="ctools"><button class="tool" data-format="**" title="Bold">B</button><button class="tool italic" data-format="_" title="Italic">I</button><button class="tool" id="attach" title="Attach image">⌕</button><input id="files" type="file" accept="image/*" multiple hidden><div class="grow"></div><button class="send" id="send">Send</button></div>
+    </div></div>
+  </section>
+  <div class="statusbar" id="statusbar"></div>
 </div>
 <dialog id="dialog"><form method="dialog"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="dialogSave" value="default">Save</button></p></form></dialog>
 <script src="/projects.js"></script></body></html>

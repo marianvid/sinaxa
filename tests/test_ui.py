@@ -8,6 +8,16 @@ def test_four_sections_are_independent_files():
             assert (ui / (page + suffix)).is_file()
 
 
+def test_pages_extend_the_original_visual_system():
+    ui = Path(__file__).parents[1] / "ui"
+    base = (ui / "base.css").read_text()
+    assert "--bg:#14161c" in base
+    assert "grid-template-columns:262px 1fr" in base
+    assert ".brand .mark:after" in base
+    for page in ("projects", "members", "engines"):
+        assert "@import url('/base.css')" in (ui / (page + ".css")).read_text()
+
+
 def test_navigation_has_no_separate_seats_page():
     ui = Path(__file__).parents[1] / "ui"
     for page in ("projects", "members", "engines", "settings"):
