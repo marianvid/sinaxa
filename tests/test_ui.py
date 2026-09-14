@@ -26,6 +26,16 @@ def test_navigation_has_no_separate_seats_page():
         assert "/engines.html" in html
 
 
+def test_navigation_is_icon_only_and_directly_below_brand():
+    ui = Path(__file__).parents[1] / "ui"
+    for page in ("projects", "members", "engines", "settings"):
+        html = (ui / (page + ".html")).read_text()
+        assert html.index('class="brand"') < html.index('class="nav"') < html.index('class="hd"')
+        for label in ("Projects", "Members", "Engines", "Settings"):
+            assert f'title="{label}" aria-label="{label}"' in html
+            assert f'</i>{label}</a>' not in html
+
+
 def test_projects_owns_seats_sessions_search_and_attachments():
     html = (Path(__file__).parents[1] / "ui" / "projects.html").read_text()
     for marker in ('id="seats"', 'id="sessions"', 'id="search"',
