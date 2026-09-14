@@ -38,6 +38,9 @@ class FakeAgent:
                 "tokens": 10 * self.turns, "alive": not self.stopped,
                 "pids": [], "shared_process": True}
 
+    def native_id(self):
+        return "fake-%s" % self.name
+
     def stop(self):
         self.stopped = True
 
@@ -56,7 +59,7 @@ class FakeEngines:
         self.agents = {}            # name -> the most recent agent
         self.history = []           # every agent ever made, stops included
 
-    def agent(self, member, name, instructions):
+    def agent(self, member, name, instructions, native_id=None):
         agent = FakeAgent(self, name, instructions)
         self.agents[name] = agent
         self.history.append(agent)

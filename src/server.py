@@ -1,44 +1,10 @@
-"""HTTP. It parses, it calls App, it serialises. No rules live here.
-
-    GET    /                                the page
-    GET    /api/state?project=&session=&room=
-    GET    /api/models?engine=
-    GET    /api/files/<name>?project=&session=      a pasted image
-    POST   /api/say            {project, session, room, text,
-                                images: [{type, data(base64)}]}
-
-    POST   /api/projects       {name, cwd}
-    DELETE /api/projects/<id>?erase=1
-
-    POST   /api/members        {name, kind, engine, model, effort, binary}
-    PATCH  /api/members/<id>
-    DELETE /api/members/<id>
-
-    POST   /api/seatdefs       {role, prompt, default_member}
-    PATCH  /api/seatdefs/<id>
-    DELETE /api/seatdefs/<id>
-
-    POST   /api/sessions       {project, name}
-    PATCH  /api/sessions/<id>  {project, name}
-    DELETE /api/sessions/<id>?project=&erase=1
-
-    POST   /api/seats          {project, session, seat_def, occupant, prompt}
-    PATCH  /api/seats/<id>     {project, session, occupant, prompt, clear_prompt}
-    DELETE /api/seats/<id>?project=&session=
-    POST   /api/seats/<id>/clear   {project, session}
-
-    POST   /api/rooms          {project, session, name, seats[]}
-    DELETE /api/rooms/<id>?project=&session=&erase=1
-    POST   /api/rooms/<id>/seats     {project, session, seat}
-    DELETE /api/rooms/<id>/seats/<seat_id>?project=&session=
-"""
+"""Thin JSON/HTTP adapter. All application behaviour lives in App."""
 
 import argparse
 import base64
 import json
 import os
 import signal
-import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -46,59 +12,48 @@ from .app import App
 from .model import ModelError
 
 HOST, PORT = "127.0.0.1", 8789
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(ROOT, "ui")
-STATIC = {
-    "/projects.html": ("projects.html", "text/html; charset=utf-8"),
-    "/projects.css": ("projects.css", "text/css; charset=utf-8"),
-    "/projects.js": ("projects.js", "text/javascript; charset=utf-8"),
-    "/members.html": ("members.html", "text/html; charset=utf-8"),
-    "/members.css": ("members.css", "text/css; charset=utf-8"),
-    "/members.js": ("members.js", "text/javascript; charset=utf-8"),
-    "/seats.html": ("seats.html", "text/html; charset=utf-8"),
-    "/seats.css": ("seats.css", "text/css; charset=utf-8"),
-    "/seats.js": ("seats.js", "text/javascript; charset=utf-8"),
-    "/settings.html": ("settings.html", "text/html; charset=utf-8"),
-    "/settings.css": ("settings.css", "text/css; charset=utf-8"),
-    "/settings.js": ("settings.js", "text/javascript; charset=utf-8"),
-}
-
-
-MIME = {".png": "image/png", ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg", ".gif": "image/gif",
-        ".webp": "image/webp"}
-SUFFIX = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
-          "image/webp": ".webp"}
-MAX_IMAGE = 24 * 1024 * 1024      # a retina screenshot, with room to spare
+PAGES = ("projects", "members", "engines", "settings")
+STATIC = {"/%s.%s" % (page, ext): ("%s.%s" % (page, ext),
+          {"html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
+           "js": "text/javascript; charset=utf-8"}[ext])
+          for page in PAGES for ext in ("html", "css", "js")}
+MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp"}
+SUFFIX = {value: key for key, value in MIME.items()}
+MAX_IMAGE = 24 * 1024 * 1024
 
 
 def decode_images(items):
-    """[{type, data}] as the page sends them -> [(bytes, suffix)].
-
-    Nothing is resized: a screenshot is pasted to be read, and shrinking it
-    to save tokens is the kind of help that loses the line of code you were
-    pointing at.
-    """
     out = []
     for item in items or []:
         blob = base64.b64decode(item.get("data") or "")
-        if not blob:
-            continue
         if len(blob) > MAX_IMAGE:
-            raise ModelError("that image is %.1f MB; the limit is %d MB"
-                             % (len(blob) / 1048576.0, MAX_IMAGE // 1048576))
-        out.append((blob, SUFFIX.get(item.get("type"), ".png")))
+            raise ModelError("an attachment exceeds the 24 MB limit")
+        if blob:
+            out.append((blob, SUFFIX.get(item.get("type"), ".png")))
     return out
 
 
 class Handler(BaseHTTPRequestHandler):
     app = None
-    lock = threading.Lock()
 
-    # ------------------------------------------------------------ replies
-    def send(self, code, payload):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    @property
+    def parts(self):
+        return [part for part in urlparse(self.path).path.split("/") if part]
+
+    @property
+    def query(self):
+        return {key: values[0] for key, values in
+                parse_qs(urlparse(self.path).query).items()}
+
+    def payload(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(length) or b"{}") if length else {}
+
+    def send_json(self, code, payload):
+        body = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -106,37 +61,24 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_file(self, path, mime):
-        with open(path, "rb") as fh:
-            body = fh.read()
+        with open(path, "rb") as stream:
+            body = stream.read()
         self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    # ------------------------------------------------------------ reading
-    @property
-    def parts(self):
-        return [p for p in urlparse(self.path).path.strip("/").split("/") if p]
+    def guarded(self, action):
+        try:
+            self.send_json(200, action())
+        except ModelError as exc:
+            self.send_json(400, {"error": str(exc)})
+        except KeyError as exc:
+            self.send_json(404, {"error": str(exc)})
+        except Exception as exc:
+            self.send_json(500, {"error": "%s: %s" % (type(exc).__name__, exc)})
 
-    @property
-    def query(self):
-        return {k: v[0] for k, v in
-                parse_qs(urlparse(self.path).query).items()}
-
-    def payload(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        return json.loads(self.rfile.read(length) or b"{}")
-
-    def where(self, body):
-        """Every write says which project and session it means."""
-        query = self.query
-        return (body.get("project") or query.get("project"),
-                body.get("session") or query.get("session"))
-
-    # ------------------------------------------------------------ routing
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
@@ -145,173 +87,105 @@ class Handler(BaseHTTPRequestHandler):
             name, mime = STATIC[path]
             return self.send_file(os.path.join(UI, name), mime)
         if path == "/api/state":
-            query = self.query
-            with self.lock:
-                return self.guarded(lambda: self.app.state(
-                    query.get("project"), query.get("session"),
-                    query.get("room")))
+            q = self.query
+            return self.guarded(lambda: self.app.state(
+                q.get("project"), q.get("session"), q.get("search")))
         if path == "/api/models":
-            engine = self.query.get("engine")
-            return self.guarded(lambda: {"models":
-                                         self.app.models_for(engine)})
+            q = self.query
+            return self.guarded(lambda: {"models": self.app.models_for(
+                q["engine"], q.get("project"))})
+        if path.startswith("/api/jobs/"):
+            return self.guarded(lambda: self.app.job(self.parts[2]))
         if path.startswith("/api/files/"):
-            query = self.query
-            name = path[len("/api/files/"):]
-            found = self.app.image(query.get("project"), query.get("session"),
-                                   name)
+            q = self.query
+            found = self.app.image(q["project"], q["session"], self.parts[2])
             if not found:
-                return self.send(404, {"error": "no such image"})
-            return self.send_file(found, MIME.get(
-                os.path.splitext(found)[1].lower(), "application/octet-stream"))
-        return self.send(404, {"error": "not found"})
+                return self.send_json(404, {"error": "no such attachment"})
+            return self.send_file(found, MIME.get(os.path.splitext(found)[1],
+                                                  "application/octet-stream"))
+        self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
         body = self.payload()
-        with self.lock:
-            return self.guarded(lambda: self.post(self.parts, body))
+        self.guarded(lambda: self.post(self.parts, body))
 
     def do_PATCH(self):
         body = self.payload()
-        with self.lock:
-            return self.guarded(lambda: self.patch(self.parts, body))
+        self.guarded(lambda: self.patch(self.parts, body))
 
     def do_DELETE(self):
-        with self.lock:
-            return self.guarded(lambda: self.delete(self.parts, self.query))
+        self.guarded(lambda: self.delete(self.parts, self.query))
 
-    def guarded(self, work):
-        try:
-            return self.send(200, work())
-        except ModelError as exc:
-            return self.send(400, {"error": str(exc)})
-        except KeyError as exc:
-            return self.send(404, {"error": str(exc)})
-        except Exception as exc:                       # pragma: no cover
-            return self.send(500, {"error": "%s: %s"
-                                            % (type(exc).__name__, exc)})
-
-    # ------------------------------------------------------------ writing
     def post(self, parts, body):
-        app = self.app
-        if parts[:2] == ["api", "say"]:
-            project, session = self.where(body)
-            message = app.say(project, session, body["room"], body["text"],
-                              images=decode_images(body.get("images")))
-            return {"ok": True, "message": message}
-
-        if parts[:2] == ["api", "projects"]:
-            project = app.add_project(body["name"], cwd=body.get("cwd"))
-            return {"ok": True, "project": project.as_dict()}
-
-        if parts[:2] == ["api", "members"]:
-            member = app.add_member(**self.member_fields(body))
-            return {"ok": True, "member": member.as_dict()}
-
-        if parts[:2] == ["api", "seatdefs"]:
-            definition = app.add_seat_def(
-                role=body["role"], prompt=body.get("prompt", ""),
-                default_member=body.get("default_member") or None)
-            return {"ok": True, "seat_def": definition.as_dict()}
-
-        if parts[:2] == ["api", "sessions"]:
-            session = app.add_session(body["project"], body["name"])
-            return {"ok": True, "session": {"id": session.id,
-                                            "name": session.name}}
-
-        if parts[:2] == ["api", "seats"]:
-            project, session = self.where(body)
-            if len(parts) == 4 and parts[3] == "clear":
-                app.clear_seat_context(project, session, parts[2])
+        if parts == ["api", "say"]:
+            message, job = self.app.say(body["project"], body["session"],
+                                        body.get("text", ""),
+                                        decode_images(body.get("images")))
+            return {"ok": True, "accepted": True, "message": message, "job": job}
+        if parts == ["api", "projects"]:
+            made = self.app.add_project(body["name"], body.get("cwd"))
+            return {"ok": True, "project": made.as_dict()}
+        if parts == ["api", "members"]:
+            made = self.app.add_member(**self.fields(body, (
+                "name", "kind", "engine", "model", "effort", "colour",
+                "options", "allowed_mcp_servers")))
+            return {"ok": True, "member": made.as_dict()}
+        if parts == ["api", "seats"]:
+            made = self.app.add_seat(body["project"], body["role"],
+                                     body["prompt"], body["occupant"])
+            return {"ok": True, "seat": made.as_dict()}
+        if parts == ["api", "sessions"]:
+            made = self.app.add_session(body["project"], body["name"],
+                                        body.get("participants", []))
+            return {"ok": True, "session": made.as_dict()}
+        if len(parts) == 4 and parts[:2] == ["api", "sessions"]:
+            project = body["project"]
+            if parts[3] == "context":
+                message = self.app.clear_context(project, parts[2])
+                return {"ok": True, "message": message}
+            if parts[3] == "history":
+                self.app.clear_history(project, parts[2])
                 return {"ok": True}
-            seat = app.add_seat(project, session, body["seat_def"],
-                                body["occupant"], body.get("prompt"))
-            return {"ok": True, "seat": seat.as_dict()}
-
-        if parts[:2] == ["api", "rooms"]:
-            project, session = self.where(body)
-            if len(parts) == 4 and parts[3] == "seats":
-                room = app.add_seat_to_room(project, session, parts[2],
-                                            body["seat"])
-                return {"ok": True, "room": room.as_dict()}
-            room = app.add_room(project, session, body["name"],
-                                body.get("seats") or [])
-            return {"ok": True, "room": room.as_dict()}
-
         raise KeyError("no such endpoint")
 
     def patch(self, parts, body):
-        app = self.app
-        if parts[:2] == ["api", "members"] and len(parts) == 3:
-            fields = self.member_fields(body, partial=True)
-            member = app.update_member(parts[2], **fields)
-            return {"ok": True, "member": member.as_dict()}
-
-        if parts[:2] == ["api", "seatdefs"] and len(parts) == 3:
-            fields = {k: body[k] for k in ("role", "prompt", "default_member")
-                      if k in body}
-            definition = app.update_seat_def(parts[2], **fields)
-            return {"ok": True, "seat_def": definition.as_dict()}
-
-        if parts[:2] == ["api", "sessions"] and len(parts) == 3:
-            session = app.rename_session(body["project"], parts[2],
-                                         body["name"])
-            return {"ok": True, "session": {"id": session.id,
-                                            "name": session.name}}
-
-        if parts[:2] == ["api", "seats"] and len(parts) == 3:
-            project, session = self.where(body)
-            seat, restarted = app.update_seat(project, session, parts[2],
-                                              occupant=body.get("occupant"),
-                                              prompt=body.get("prompt"))
-            answer = {"ok": True, "seat": seat.as_dict(),
-                      "restarted": restarted}
-            if restarted:
-                answer["warning"] = (
-                    "the seat's process was restarted -- a running model is "
-                    "only ever told its prompt once. It reads the rooms back "
-                    "on its next turn.")
-            return answer
-
-        raise KeyError("no such endpoint")
+        if len(parts) != 3 or parts[0] != "api":
+            raise KeyError("no such endpoint")
+        kind, ident = parts[1], parts[2]
+        actions = {
+            "engines": lambda: self.app.update_engine(ident, **body).as_dict(),
+            "members": lambda: self.app.update_member(ident, **body).as_dict(),
+            "projects": lambda: self.app.update_project(ident, **body).as_dict(),
+            "seats": lambda: self.app.update_seat(body["project"], ident,
+                                                   **{k: v for k, v in body.items()
+                                                      if k != "project"}).as_dict(),
+            "sessions": lambda: self.app.update_session(body["project"], ident,
+                                                         **{k: v for k, v in body.items()
+                                                            if k != "project"}).as_dict(),
+        }
+        if kind not in actions:
+            raise KeyError("no such endpoint")
+        return {"ok": True, kind[:-1]: actions[kind]()}
 
     def delete(self, parts, query):
-        app = self.app
-        erase = query.get("erase") in ("1", "true", "yes")
-        project, session = query.get("project"), query.get("session")
-
-        if parts[:2] == ["api", "projects"] and len(parts) == 3:
-            app.remove_project(parts[2], erase=erase)
-            return {"ok": True}
-        if parts[:2] == ["api", "members"] and len(parts) == 3:
-            app.remove_member(parts[2])
-            return {"ok": True}
-        if parts[:2] == ["api", "seatdefs"] and len(parts) == 3:
-            app.remove_seat_def(parts[2])
-            return {"ok": True}
-        if parts[:2] == ["api", "sessions"] and len(parts) == 3:
-            app.remove_session(project, parts[2], erase=erase)
-            return {"ok": True}
-        if parts[:2] == ["api", "seats"] and len(parts) == 3:
-            app.remove_seat(project, session, parts[2])
-            return {"ok": True}
-        if parts[:2] == ["api", "rooms"]:
-            if len(parts) == 5 and parts[3] == "seats":
-                room = app.remove_seat_from_room(project, session, parts[2],
-                                                 parts[4])
-                return {"ok": True, "room": room.as_dict()}
-            if len(parts) == 3:
-                app.remove_room(project, session, parts[2], erase=erase)
-                return {"ok": True}
-        raise KeyError("no such endpoint")
+        if len(parts) != 3 or parts[0] != "api":
+            raise KeyError("no such endpoint")
+        kind, ident = parts[1], parts[2]
+        if kind == "members":
+            self.app.remove_member(ident)
+        elif kind == "projects":
+            self.app.remove_project(ident, query.get("erase") == "1")
+        elif kind == "seats":
+            self.app.remove_seat(query["project"], ident)
+        elif kind == "sessions":
+            self.app.remove_session(query["project"], ident)
+        else:
+            raise KeyError("no such endpoint")
+        return {"ok": True}
 
     @staticmethod
-    def member_fields(body, partial=False):
-        names = ("name", "kind", "engine", "model", "effort", "binary",
-                 "colour")
-        fields = {k: body[k] for k in names if k in body}
-        if not partial:
-            fields.setdefault("kind", "agent")
-        return fields
+    def fields(body, names):
+        return {name: body[name] for name in names if name in body}
 
     def log_message(self, fmt, *args):
         pass
@@ -322,32 +196,17 @@ def main():
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--state", default=os.path.join(ROOT, "state"))
     parser.add_argument("--cwd", default=ROOT)
-    parser.add_argument("--opencode-port", type=int, default=4096)
     args = parser.parse_args()
+    Handler.app = App(args.state, cwd=args.cwd)
 
-    Handler.app = App(args.state, cwd=args.cwd,
-                      opencode_port=args.opencode_port)
-
-    # `kill` sends SIGTERM, and python's default handler exits without
-    # running atexit -- which would leave every agent orphaned. Turning the
-    # signal into an ordinary exit is what makes the shutdown path the same
-    # whether you press Ctrl-C or stop the service.
-    #
-    # SIGHUP is deliberately left alone. nohup ignores it so that a server
-    # outlives the terminal that started it; handling it here would undo
-    # that and take the server down with the shell.
     def leave(signum, frame):
         raise SystemExit(0)
-
     signal.signal(signal.SIGTERM, leave)
-
-    print("sinaxa     ->  http://%s:%d" % (HOST, args.port))
-    print("state      ->  %s" % args.state)
-    print("projects   ->  %d" % len(Handler.app.sinaxa.projects))
+    print("sinaxa -> http://%s:%d" % (HOST, args.port))
     try:
         ThreadingHTTPServer((HOST, args.port), Handler).serve_forever()
     except (KeyboardInterrupt, SystemExit):
-        print("\nstopping agents...")
+        pass
     finally:
         Handler.app.stop()
 

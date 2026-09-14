@@ -1,37 +1,20 @@
-"""The structures, and only the structures.
+"""Provider-agnostic domain objects.
 
-    Sinaxa
-     |- members[]     Member    an engine plus a model: how an occupant starts
-     |- seat_defs[]   SeatDef   a role plus its default prompt
-     +- projects[]    Project
-          +- sessions[]  Session   seats live here; the prompt is overridden here
-               |- seats[]  Seat    a role, taken by a member, inside one session
-               +- rooms[]  Room    a grouping of seats, nothing more
-
-Nothing in this file knows about Claude, Codex, opencode or any person. It
-holds lists. Talking to a provider is src/engines/, disk is src/store.py.
-
-Two rules earn their place here because everything else follows from them:
-
-  * A seat is the unit of conversation. One seat in one session is one
-    context, however many rooms it sits in.
-  * A seat sees every message of every room it belongs to. That is the whole
-    of the context model: the common room reaches everyone in it, a private
-    room reaches only its own members, and no rule beyond membership is
-    needed to say so.
+Session is the only conversational object. It selects project seats and owns
+an independent message history and context boundary. Engines describe local
+CLI installations; members choose an engine; seats give members project roles.
 """
 
 import re
+import time
 import uuid
 
 HUMAN, AGENT = "human", "agent"
-ALL, PRIVATE, CUSTOM = "all", "private", "custom"
+DIRECT, TEAM, CUSTOM = "direct", "team", "custom"
+OPEN, CLOSED = "open", "closed"
 
-# A member is recognised by its colour everywhere it appears -- the avatar in
-# the thread, the swatch in the sidebar, the pill in the header. Handed out in
-# order so that two members are never the same colour by accident.
-PALETTE = ["#2f6fd0", "#c96442", "#3fbf7f", "#7c6cf0", "#e0a53f", "#38a9a2",
-           "#d05f9c", "#8a9a3b"]
+PALETTE = ["#2f6fd0", "#c96442", "#3fbf7f", "#7c6cf0", "#e0a53f",
+           "#38a9a2", "#d05f9c", "#8a9a3b"]
 
 
 def new_id(prefix):
@@ -39,33 +22,62 @@ def new_id(prefix):
 
 
 class ModelError(Exception):
-    """A rule was broken. The message is meant to be shown to the user."""
+    """A domain rule was broken; its message is safe to show in the UI."""
 
 
-def blank_to_default(prompt):
-    """An override that has been emptied is not an empty prompt -- it is the
-    way back to the role's own. A seat is never without instructions."""
-    if prompt is None or not prompt.strip():
-        return None
-    return prompt
+class EngineConfig:
+    """One globally configured local CLI installation."""
+
+    def __init__(self, id, kind, name=None, enabled=True, executable=None,
+                 mode="persistent", streaming=True, max_concurrency=4,
+                 mcp_servers=None, options=None):
+        if not id or not kind:
+            raise ModelError("an engine needs an id and a kind")
+        if mode not in ("persistent", "resume"):
+            raise ModelError("engine mode must be persistent or resume")
+        if int(max_concurrency) < 1:
+            raise ModelError("engine concurrency must be at least one")
+        self.id = id
+        self.kind = kind
+        self.name = name or kind
+        self.enabled = bool(enabled)
+        self.executable = executable
+        self.mode = mode
+        self.streaming = bool(streaming)
+        self.max_concurrency = int(max_concurrency)
+        self.mcp_servers = list(mcp_servers or [])
+        self.options = dict(options or {})
+
+    def as_dict(self):
+        return {"id": self.id, "kind": self.kind, "name": self.name,
+                "enabled": self.enabled, "executable": self.executable,
+                "mode": self.mode, "streaming": self.streaming,
+                "max_concurrency": self.max_concurrency,
+                "mcp_servers": self.mcp_servers, "options": self.options}
+
+    @classmethod
+    def from_dict(cls, raw):
+        return cls(**raw)
 
 
-# --------------------------------------------------------------- members
 class Member:
-    """Who can take a seat: a human, or an engine started a particular way."""
+    """A reusable person or agent profile."""
 
     def __init__(self, name, kind=AGENT, engine=None, model=None, effort=None,
-                 binary=None, id=None, colour=None):
+                 id=None, colour=None, options=None, allowed_mcp_servers=None):
+        if not (name or "").strip():
+            raise ModelError("a member needs a name")
         if kind == AGENT and not engine:
             raise ModelError("an agent needs an engine")
         self.id = id or new_id("mem")
-        self.name = name
+        self.name = name.strip()
         self.kind = kind
         self.engine = engine
         self.model = model
         self.effort = effort
-        self.binary = binary
         self.colour = colour
+        self.options = dict(options or {})
+        self.allowed_mcp_servers = list(allowed_mcp_servers or [])
 
     @property
     def is_human(self):
@@ -74,96 +86,33 @@ class Member:
     def as_dict(self):
         return {"id": self.id, "name": self.name, "kind": self.kind,
                 "engine": self.engine, "model": self.model,
-                "effort": self.effort, "binary": self.binary,
-                "colour": self.colour}
+                "effort": self.effort, "colour": self.colour,
+                "options": self.options,
+                "allowed_mcp_servers": self.allowed_mcp_servers}
 
     @classmethod
     def from_dict(cls, raw):
         return cls(**raw)
 
 
-class SeatDef:
-    """A role, defined once for the whole of sinaxa.
+class Seat:
+    """A project role occupied by a member."""
 
-    `prompt` is the default an occupant is given. A session may override it;
-    a room never does -- a room only decides who is in the conversation.
-    """
-
-    def __init__(self, role, prompt="", default_member=None, id=None):
-        if not role.strip():
-            raise ModelError("a role needs a name")
+    def __init__(self, role, prompt, occupant, id=None):
+        if not (role or "").strip():
+            raise ModelError("a seat needs a role")
         if not (prompt or "").strip():
-            raise ModelError("a role needs a prompt -- it is what its "
-                             "occupant is told it does")
-        self.id = id or new_id("def")
-        self.role = role
+            raise ModelError("a seat needs a prompt")
+        if not occupant:
+            raise ModelError("a seat needs an occupant")
+        self.id = id or new_id("seat")
+        self.role = role.strip()
         self.prompt = prompt
-        self.default_member = default_member
+        self.occupant = occupant
 
     def as_dict(self):
         return {"id": self.id, "role": self.role, "prompt": self.prompt,
-                "default_member": self.default_member}
-
-    @classmethod
-    def from_dict(cls, raw):
-        return cls(**raw)
-
-
-# ------------------------------------------------------------ the session
-class Seat:
-    """A role taken by a member, inside one session.
-
-    There is no such thing as an empty seat: a seat exists because somebody
-    occupies it. An occupant can go *missing* -- the member deleted, its
-    binary moved, its model gone from the engine's config -- and then the
-    seat says so and waits to be given a new one.
-
-    A prompt is never empty. `prompt` is either an override, or None meaning
-    the role's own. Blanking an override is how you go back to the role's --
-    there is nothing else emptiness could sensibly mean, and an occupant
-    with no instructions at all is not a state we allow.
-    """
-
-    def __init__(self, seat_def, occupant, prompt=None, id=None):
-        self.id = id or new_id("seat")
-        self.seat_def = seat_def
-        self.occupant = occupant
-        self.prompt = blank_to_default(prompt)
-
-    def as_dict(self):
-        return {"id": self.id, "seat_def": self.seat_def,
-                "occupant": self.occupant, "prompt": self.prompt}
-
-    @classmethod
-    def from_dict(cls, raw):
-        return cls(**raw)
-
-
-class Room:
-    """A grouping of seats. The lead is in every room and is not a seat.
-
-        all      every seat of the session; maintained by sinaxa
-        private  one seat; created and removed with it
-        custom   yours: any selection of seats
-
-    Only custom rooms take seats in and out. The other two follow the
-    session, so that "who is in the team room" is never a second answer to
-    "who is in the team".
-    """
-
-    def __init__(self, name, seats=None, kind=CUSTOM, id=None):
-        self.id = id or new_id("room")
-        self.name = name
-        self.seats = list(seats or [])
-        self.kind = kind
-
-    @property
-    def managed(self):
-        return self.kind in (ALL, PRIVATE)
-
-    def as_dict(self):
-        return {"id": self.id, "name": self.name, "seats": self.seats,
-                "kind": self.kind}
+                "occupant": self.occupant}
 
     @classmethod
     def from_dict(cls, raw):
@@ -171,31 +120,66 @@ class Room:
 
 
 class Session:
-    """Seats live here, and so does the prompt override.
+    """One conversation with a chosen set of project seats."""
 
-    Creating a session gives you the room with everyone in it. Every seat you
-    add brings its own private room along.
-    """
-
-    def __init__(self, name, id=None, seats=None, rooms=None, seq=0):
+    def __init__(self, name, participants=None, kind=CUSTOM, id=None, seq=0,
+                 context_start_seq=0, archived=False, created_at=None,
+                 last_activity_at=None):
+        if kind not in (DIRECT, TEAM, CUSTOM):
+            raise ModelError("unknown session kind")
+        if kind == CUSTOM and not (name or "").strip():
+            raise ModelError("a session needs a name")
         self.id = id or new_id("ses")
-        self.name = name
-        self.seats = list(seats or [])
-        self.rooms = list(rooms or [])
-        self.seq = seq                  # next message number, session-wide
-        if not self.rooms:
-            self.rooms.append(Room(name, [], ALL))
+        self.name = (name or "").strip()
+        self.participants = list(dict.fromkeys(participants or []))
+        self.kind = kind
+        self.seq = int(seq)
+        self.context_start_seq = int(context_start_seq)
+        self.archived = bool(archived)
+        self.created_at = created_at
+        self.last_activity_at = last_activity_at
 
-    # ----------------------------------------------------------- lookups
     @property
-    def all_room(self):
-        return next(r for r in self.rooms if r.kind == ALL)
+    def managed(self):
+        return self.kind in (DIRECT, TEAM)
 
-    def room(self, room_id):
-        for room in self.rooms:
-            if room.id == room_id:
-                return room
-        raise ModelError("no such room")
+    def as_dict(self):
+        return {"id": self.id, "name": self.name,
+                "participants": self.participants, "kind": self.kind,
+                "seq": self.seq, "context_start_seq": self.context_start_seq,
+                "archived": self.archived, "created_at": self.created_at,
+                "last_activity_at": self.last_activity_at}
+
+    @classmethod
+    def from_dict(cls, raw):
+        return cls(**raw)
+
+
+class Project:
+    """A restorable team, its working folder and independent sessions."""
+
+    def __init__(self, name, id=None, cwd=None, state=OPEN, seats=None,
+                 sessions=None):
+        if not (name or "").strip():
+            raise ModelError("a project needs a name")
+        if state not in (OPEN, CLOSED):
+            raise ModelError("a project must be open or closed")
+        self.id = id or new_id("prj")
+        self.name = name.strip()
+        self.cwd = cwd
+        self.state = state
+        self.seats = list(seats or [])
+        self.sessions = list(sessions or [])
+        if not any(s.kind == TEAM for s in self.sessions):
+            self.sessions.insert(0, Session("Team", [], TEAM))
+
+    @property
+    def is_open(self):
+        return self.state == OPEN
+
+    @property
+    def team_session(self):
+        return next(s for s in self.sessions if s.kind == TEAM)
 
     def seat(self, seat_id):
         for seat in self.seats:
@@ -203,145 +187,88 @@ class Session:
                 return seat
         raise ModelError("no such seat")
 
-    def private_room_of(self, seat_id):
-        for room in self.rooms:
-            if room.kind == PRIVATE and room.seats == [seat_id]:
-                return room
-        return None
-
-    def rooms_of(self, seat_id):
-        """Every room a seat is in -- which is exactly what it may read."""
-        return [r for r in self.rooms if seat_id in r.seats]
-
-    # ------------------------------------------------------------ seats
-    def add_seat(self, seat_def_id, occupant, prompt=None, role_name="seat"):
-        seat = Seat(seat_def_id, occupant, prompt)
-        self.seats.append(seat)
-        self.all_room.seats.append(seat.id)
-        self.rooms.append(Room(role_name, [seat.id], PRIVATE))
-        return seat
-
-    def remove_seat(self, seat_id):
-        seat = self.seat(seat_id)
-        self.seats.remove(seat)
-        for room in list(self.rooms):
-            if seat_id in room.seats:
-                room.seats.remove(seat_id)
-                if not room.seats and room.kind != ALL:
-                    self.rooms.remove(room)
-        return seat
-
-    # ------------------------------------------------------------ rooms
-    def add_room(self, name, seat_ids):
-        if not seat_ids:
-            raise ModelError("a room needs at least one seat besides the lead")
-        for seat_id in seat_ids:
-            self.seat(seat_id)
-        room = Room(name, list(seat_ids), CUSTOM)
-        self.rooms.append(room)
-        return room
-
-    def remove_room(self, room_id):
-        room = self.room(room_id)
-        if room.managed:
-            raise ModelError("%s rooms follow the session and cannot be "
-                             "removed on their own" % room.kind)
-        self.rooms.remove(room)
-        return room
-
-    def add_seat_to_room(self, room_id, seat_id):
-        room = self.room(room_id)
-        if room.managed:
-            raise ModelError("%s rooms follow the session; make a room of "
-                             "your own to group seats differently" % room.kind)
-        self.seat(seat_id)
-        if seat_id not in room.seats:
-            room.seats.append(seat_id)
-        return room
-
-    def remove_seat_from_room(self, room_id, seat_id):
-        room = self.room(room_id)
-        if room.managed:
-            raise ModelError("%s rooms follow the session" % room.kind)
-        if len(room.seats) <= 1:
-            raise ModelError("that is the room's last seat -- remove the room "
-                             "instead")
-        room.seats.remove(seat_id)
-        return room
-
-    # ------------------------------------------------------------- disk
-    def as_dict(self):
-        return {"id": self.id, "name": self.name, "seq": self.seq,
-                "seats": [s.as_dict() for s in self.seats],
-                "rooms": [r.as_dict() for r in self.rooms]}
-
-    @classmethod
-    def from_dict(cls, raw):
-        return cls(name=raw["name"], id=raw["id"], seq=raw.get("seq", 0),
-                   seats=[Seat.from_dict(s) for s in raw.get("seats", [])],
-                   rooms=[Room.from_dict(r) for r in raw.get("rooms", [])])
-
-
-class Project:
-    def __init__(self, name, id=None, sessions=None, cwd=None):
-        self.id = id or new_id("prj")
-        self.name = name
-        self.cwd = cwd
-        self.sessions = list(sessions or [])
-
     def session(self, session_id):
         for session in self.sessions:
             if session.id == session_id:
                 return session
         raise ModelError("no such session")
 
-    def add_session(self, name):
-        session = Session(name)
+    def direct_session(self, seat_id):
+        return next((s for s in self.sessions
+                     if s.kind == DIRECT and s.participants == [seat_id]), None)
+
+    def add_seat(self, role, prompt, occupant):
+        if any(s.role.casefold() == role.strip().casefold() for s in self.seats):
+            raise ModelError("that role already exists in this project")
+        seat = Seat(role, prompt, occupant)
+        self.seats.append(seat)
+        self.team_session.participants.append(seat.id)
+        self.sessions.append(Session(role, [seat.id], DIRECT,
+                                     created_at=time.time()))
+        return seat
+
+    def remove_seat(self, seat_id):
+        seat = self.seat(seat_id)
+        direct = self.direct_session(seat_id)
+        self.seats.remove(seat)
+        if direct:
+            self.sessions.remove(direct)
+        for session in self.sessions:
+            if seat_id in session.participants:
+                session.participants.remove(seat_id)
+        return seat, direct
+
+    def add_session(self, name, participants):
+        wanted = list(dict.fromkeys(participants or []))
+        if not wanted:
+            raise ModelError("a session needs at least one seat")
+        for seat_id in wanted:
+            self.seat(seat_id)
+        session = Session(name, wanted, CUSTOM, created_at=time.time())
         self.sessions.append(session)
         return session
 
     def remove_session(self, session_id):
         session = self.session(session_id)
-        if len(self.sessions) == 1:
-            raise ModelError("a project keeps at least one session")
+        if session.managed:
+            raise ModelError("direct and team sessions cannot be removed")
         self.sessions.remove(session)
         return session
 
     def as_dict(self):
         return {"id": self.id, "name": self.name, "cwd": self.cwd,
-                "sessions": [s.id for s in self.sessions]}
+                "state": self.state,
+                "seats": [seat.as_dict() for seat in self.seats],
+                "sessions": [session.as_dict() for session in self.sessions]}
+
+    @classmethod
+    def from_dict(cls, raw):
+        raw = dict(raw)
+        raw["seats"] = [Seat.from_dict(one) for one in raw.get("seats", [])]
+        raw["sessions"] = [Session.from_dict(one)
+                           for one in raw.get("sessions", [])]
+        return cls(**raw)
 
 
-# ---------------------------------------------------------------- sinaxa
 class Sinaxa:
-    """The root. Members and roles are defined once, here, and used
-    everywhere; projects are the work."""
+    """Workspace aggregate and cross-project invariants."""
 
-    def __init__(self, members=None, seat_defs=None, projects=None):
+    def __init__(self, engines=None, members=None, projects=None):
+        self.engines = list(engines or [])
         self.members = list(members or [])
-        self.seat_defs = list(seat_defs or [])
         self.projects = list(projects or [])
 
-    # ---------------------------------------------------------- lookups
+    def engine(self, engine_id):
+        for engine in self.engines:
+            if engine.id == engine_id:
+                return engine
+        raise ModelError("no such engine")
+
     def member(self, member_id):
         for member in self.members:
             if member.id == member_id:
                 return member
         raise ModelError("no such member")
-
-    def find_member(self, member_id):
-        """Like member(), but None instead of raising -- a missing occupant
-        is a state to show, not a crash."""
-        try:
-            return self.member(member_id)
-        except ModelError:
-            return None
-
-    def seat_def(self, def_id):
-        for definition in self.seat_defs:
-            if definition.id == def_id:
-                return definition
-        raise ModelError("no such seat definition")
 
     def project(self, project_id):
         for project in self.projects:
@@ -351,107 +278,57 @@ class Sinaxa:
 
     @property
     def lead(self):
-        for member in self.members:
-            if member.is_human:
-                return member
-        return None
+        return next((member for member in self.members if member.is_human), None)
 
-    # ---------------------------------------------------------- members
-    def add_member(self, **kw):
-        member = Member(**kw)
-        if member.is_human and self.lead:
-            raise ModelError("there is already a human lead: %s"
-                             % self.lead.name)
-        if any(m.name.lower() == member.name.lower() for m in self.members):
-            raise ModelError("a member called %s already exists" % member.name)
-        if not member.colour:
-            taken = {m.colour for m in self.members}
-            free = [c for c in PALETTE if c not in taken]
-            member.colour = (free or PALETTE)[0]
+    def add_member(self, **fields):
+        name = fields.get("name", "")
+        if any(m.name.casefold() == name.strip().casefold() for m in self.members):
+            raise ModelError("member names must be unique")
+        if fields.get("kind", AGENT) == AGENT:
+            engine = self.engine(fields.get("engine"))
+            if not engine.enabled:
+                raise ModelError("that engine is disabled")
+        elif any(member.is_human for member in self.members):
+            raise ModelError("there can only be one human lead")
+        member = Member(**fields)
+        used = {m.colour for m in self.members}
+        member.colour = member.colour or next((c for c in PALETTE if c not in used),
+                                               PALETTE[len(self.members) % len(PALETTE)])
         self.members.append(member)
         return member
 
-    def update_member(self, member_id, **kw):
+    def update_member(self, member_id, **fields):
         member = self.member(member_id)
-        for field, value in kw.items():
-            if field in ("id", "kind"):
-                continue
-            setattr(member, field, value)
+        if "name" in fields:
+            name = fields["name"].strip()
+            if not name:
+                raise ModelError("a member needs a name")
+            if any(m.id != member.id and m.name.casefold() == name.casefold()
+                   for m in self.members):
+                raise ModelError("member names must be unique")
+        if "engine" in fields and fields["engine"]:
+            engine = self.engine(fields["engine"])
+            if not engine.enabled:
+                raise ModelError("that engine is disabled")
+        for key, value in fields.items():
+            if hasattr(member, key):
+                setattr(member, key, value)
         return member
-
-    def uses_member(self, member_id):
-        """Every (project, session, seat) that member occupies."""
-        found = []
-        for project in self.projects:
-            for session in project.sessions:
-                for seat in session.seats:
-                    if seat.occupant == member_id:
-                        found.append((project, session, seat))
-        return found
 
     def remove_member(self, member_id):
         member = self.member(member_id)
-        taken = self.uses_member(member_id)
-        if taken:
-            where = ", ".join("%s / %s" % (p.name, s.name) for p, s, _ in taken)
-            raise ModelError("%s still occupies a seat in %s -- give those "
-                             "seats another occupant first"
-                             % (member.name, where))
+        if member.is_human:
+            raise ModelError("the human lead cannot be removed")
+        if any(seat.occupant == member_id for p in self.projects for seat in p.seats):
+            raise ModelError("that member still occupies a seat")
         self.members.remove(member)
         return member
 
-    # ------------------------------------------------------------ roles
-    def add_seat_def(self, **kw):
-        definition = SeatDef(**kw)
-        if any(d.role.lower() == definition.role.lower()
-               for d in self.seat_defs):
-            raise ModelError("a role called %s already exists"
-                             % definition.role)
-        self.seat_defs.append(definition)
-        return definition
-
-    def update_seat_def(self, def_id, **kw):
-        definition = self.seat_def(def_id)
-        if "prompt" in kw and not (kw["prompt"] or "").strip():
-            raise ModelError("a role needs a prompt -- it is what its "
-                             "occupant is told it does")
-        for field, value in kw.items():
-            if field != "id":
-                setattr(definition, field, value)
-        return definition
-
-    def uses_seat_def(self, def_id):
-        found = []
-        for project in self.projects:
-            for session in project.sessions:
-                for seat in session.seats:
-                    if seat.seat_def == def_id:
-                        found.append((project, session, seat))
-        return found
-
-    def remove_seat_def(self, def_id):
-        definition = self.seat_def(def_id)
-        taken = self.uses_seat_def(def_id)
-        if taken:
-            where = ", ".join("%s / %s" % (p.name, s.name) for p, s, _ in taken)
-            raise ModelError("the role %s is in use in %s -- remove those "
-                             "seats first" % (definition.role, where))
-        self.seat_defs.remove(definition)
-        return definition
-
-    # --------------------------------------------------------- projects
     def add_project(self, name, cwd=None):
-        """A new project starts as your team already is: one session, every
-        role that has a default occupant, and a room each."""
-        if any(p.name.lower() == name.lower() for p in self.projects):
-            raise ModelError("a project called %s already exists" % name)
+        if any(p.name.casefold() == name.strip().casefold()
+               for p in self.projects):
+            raise ModelError("a project with that name already exists")
         project = Project(name, cwd=cwd)
-        session = project.add_session("main")
-        for definition in self.seat_defs:
-            if definition.default_member and \
-                    self.find_member(definition.default_member):
-                session.add_seat(definition.id, definition.default_member,
-                                 role_name=definition.role)
         self.projects.append(project)
         return project
 
@@ -460,40 +337,23 @@ class Sinaxa:
         self.projects.remove(project)
         return project
 
-    # ------------------------------------------------------------ seats
-    def add_seat(self, session, seat_def_id, occupant, prompt=None):
-        definition = self.seat_def(seat_def_id)
-        self.member(occupant)
-        if any(s.seat_def == seat_def_id for s in session.seats):
-            raise ModelError("%s is already a seat in this session"
-                             % definition.role)
-        return session.add_seat(seat_def_id, occupant, prompt,
-                                role_name=definition.role)
+    def seat_name(self, project, seat):
+        return self.member(seat.occupant).name
 
-    def prompt_for(self, session, seat):
-        """The session's override, or the role's default."""
-        if seat.prompt is not None:
-            return seat.prompt
-        return self.seat_def(seat.seat_def).prompt
+    def seat_trouble(self, project, seat):
+        try:
+            member = self.member(seat.occupant)
+            engine = self.engine(member.engine)
+        except ModelError as exc:
+            return str(exc)
+        return None if engine.enabled else "%s is disabled" % engine.name
 
-    def seat_name(self, seat):
-        """What a seat is called in a transcript: its occupant's name."""
-        member = self.find_member(seat.occupant)
-        if member:
-            return member.name
-        return self.seat_def(seat.seat_def).role
-
-    def seat_trouble(self, seat):
-        """Why this seat cannot run, or None."""
-        if self.find_member(seat.occupant) is None:
-            return "its occupant no longer exists -- give it another"
-        return None
-
-    def mentioned(self, text, seats):
-        """@Name, on a word boundary, case-insensitively."""
-        out = []
+    def mentioned(self, project, text, seats):
+        found = []
         for seat in seats:
-            name = self.seat_name(seat)
-            if re.search(r"@%s\b" % re.escape(name), text, re.IGNORECASE):
-                out.append(seat)
-        return out
+            member = self.member(seat.occupant)
+            if any(re.search(r"(?<![\w@])@%s\b" % re.escape(name), text,
+                             re.IGNORECASE)
+                   for name in (member.name, seat.role)):
+                found.append(seat)
+        return found

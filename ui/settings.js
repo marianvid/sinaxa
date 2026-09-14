@@ -9,10 +9,10 @@ const esc = s => String(s == null ? '' : s)
 
 function render(){
   const engines = (S.engines || []).map(engine => `<div class="setting-card">
-    <div class="setting-head"><b>${esc(engine.label)}</b><span class="tag">${esc(engine.id)}</span></div>
-    <div class="setting-copy">${esc(engine.note || 'Local CLI engine')}</div>
-    <div class="setting-meta">Models: ${esc((engine.models || []).join(', ') || (engine.models_from_engine ? 'reported by the running engine' : 'engine default'))}</div>
-    <div class="setting-meta">Effort: ${esc((engine.efforts || []).join(', ') || 'not configured here')}</div>
+    <div class="setting-head"><b>${esc(engine.name)}</b><span class="tag">${esc(engine.id)}</span></div>
+    <div class="setting-copy">${engine.enabled ? 'Enabled' : 'Disabled'} · ${esc(engine.mode)} · ${engine.max_concurrency} concurrent turns</div>
+    <div class="setting-meta">Executable: ${esc(engine.executable || engine.kind)}</div>
+    <div class="setting-meta">MCP: ${esc((engine.mcp_servers || []).join(', ') || 'none configured')}</div>
   </div>`).join('');
   el('content').innerHTML = `<h3>Settings</h3>
     <div class="lead">Preferences on this page are local to this browser. CLI
@@ -31,7 +31,7 @@ function render(){
   };
   el('statusbar').innerHTML = `<b>${(S.engines || []).length}</b> engines<span class="sep">·</span>`
     + `<b>${(S.members || []).length}</b> members<span class="sep">·</span>`
-    + `<b>${(S.seat_defs || []).length}</b> roles`;
+    + `<b>${(S.engines || []).length}</b> engines`;
 }
 
 async function refresh(){

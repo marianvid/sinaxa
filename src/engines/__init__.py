@@ -1,147 +1,182 @@
-"""Engines: everything that knows how a provider is started.
+"""Engine contracts and project-scoped runtime ownership."""
 
-An engine describes its own Member form, so adding a fourth one changes
-nothing above this package. The three differ in ways that matter to the
-person filling in that form, and the differences are measured, not guessed
-(docs/design/03-providers.md):
-
-    claude    one process per conversation. Model and effort are flags, so
-              every seat may have its own.
-    codex     one process hosting many threads, plus a small helper per
-              thread. Reasoning effort is a config key read at process
-              start, so it is the same for every seat -- medium, for now.
-    opencode  one HTTP server hosting many sessions. It does not have a
-              model list of its own: it brokers whatever its config
-              declares, so sinaxa asks it and shows the answer. Effort is a
-              property of the model there, not of the call.
-"""
+import threading
 
 CLAUDE, CODEX, OPENCODE = "claude", "codex", "opencode"
 
-DESCRIPTIONS = {
-    CLAUDE: {
-        "id": CLAUDE,
-        "label": "Claude CLI",
-        "binary_default": "claude",
-        "models": ["sonnet", "opus", "haiku", "fable"],
-        "models_are_a_hint": True,        # a full model name is fine too
-        "models_from_engine": False,
-        "efforts": ["low", "medium", "high", "xhigh", "max"],
-        "effort_default": "medium",
-        "note": "One process per seat, around 430 MB each.",
-    },
-    CODEX: {
-        "id": CODEX,
-        "label": "Codex",
-        "binary_default": "codex",
-        "models": [],
-        "models_are_a_hint": True,
-        "models_from_engine": False,
-        "efforts": ["medium"],
-        "effort_default": "medium",
-        "note": "Effort is set when the process starts, so it is the same "
-                "for every codex seat. Fixed at medium for now.",
-    },
-    OPENCODE: {
-        "id": OPENCODE,
-        "label": "opencode",
-        "binary_default": "opencode",
-        "models": [],
-        "models_are_a_hint": False,       # pick from the list, nothing else
-        "models_from_engine": True,
-        "efforts": [],
-        "effort_default": None,
-        "note": "Models come from opencode's own configuration. sinaxa only "
-                "lets you choose among them.",
-    },
+CAPABILITIES = {
+    CLAUDE: {"label": "Claude CLI", "models": ["sonnet", "opus", "haiku"],
+             "efforts": ["low", "medium", "high", "max"],
+             "accepts_custom_model": True},
+    CODEX: {"label": "Codex CLI", "models": [],
+            "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"],
+            "accepts_custom_model": True},
+    OPENCODE: {"label": "OpenCode CLI", "models": [], "efforts": [],
+               "accepts_custom_model": True},
 }
 
-CODEX_EFFORT = "medium"
+
+class LimitedAgent:
+    """Apply an engine-wide concurrency limit without changing adapters."""
+    def __init__(self, agent, semaphore, after_turn=None, resume_mode=False):
+        self._agent = agent
+        self._semaphore = semaphore
+        self._after_turn = after_turn
+        self._resume_mode = resume_mode
+        self._native_id = None
+        self.resumed = False
+
+    def __getattr__(self, name):
+        return getattr(self._agent, name)
+
+    def ask(self, *args, **kwargs):
+        with self._semaphore:
+            if self._resume_mode and self._native_id:
+                self.resume(self._native_id)
+            answer = self._agent.ask(*args, **kwargs)
+            if self._after_turn:
+                self._after_turn(self)
+            if self._resume_mode:
+                self._native_id = self.native_id()
+                self._agent.stop()
+            return answer
+
+    def stop(self):
+        return self._agent.stop()
+
+    def resume(self, native_id):
+        resume = getattr(self._agent, "resume", None)
+        succeeded = bool(resume and resume(native_id))
+        if succeeded:
+            self._native_id = native_id
+        return succeeded
+
+    def native_id(self):
+        return (getattr(self._agent, "thread_id", None)
+                or getattr(self._agent, "session_id", None)
+                or getattr(getattr(self._agent, "session", None),
+                           "session_id", None) or self._native_id)
 
 
-def describe(engine=None):
-    if engine is None:
-        return [DESCRIPTIONS[name] for name in (CLAUDE, CODEX, OPENCODE)]
-    if engine not in DESCRIPTIONS:
-        raise KeyError("no engine called %r" % engine)
-    return DESCRIPTIONS[engine]
-
-
-class Engines:
-    """Holds the live backends, one per engine, started on first use.
-
-    A backend is shared: every codex seat is a thread in one process, every
-    opencode seat a session in one server. Claude has no backend to share --
-    its adapter spawns a process per conversation, because it cannot do
-    anything else.
-    """
-
-    def __init__(self, cwd, binaries=None, opencode_port=4096):
-        self.cwd = cwd
-        self.binaries = dict(binaries or {})
-        self.opencode_port = opencode_port
+class ProjectEngines:
+    """All live providers for one project; nothing starts in __init__."""
+    def __init__(self, project, configs, port_offset=0, checkpoint=None):
+        self.project = project
+        self.configs = {config.id: config for config in configs}
+        self.port_offset = port_offset
+        self.checkpoint = checkpoint
         self._backends = {}
+        self._limits = {config.id: threading.BoundedSemaphore(
+            config.max_concurrency) for config in configs}
 
-    def binary_for(self, engine, member_binary=None):
-        return (member_binary or self.binaries.get(engine)
-                or DESCRIPTIONS[engine]["binary_default"])
+    def config(self, engine_id):
+        config = self.configs.get(engine_id)
+        if not config or not config.enabled:
+            raise RuntimeError("engine %s is unavailable" % engine_id)
+        return config
 
-    def backend(self, engine, binary=None):
-        key = (engine, binary or "")
-        if key in self._backends:
-            return self._backends[key]
-        path = self.binary_for(engine, binary)
-        if engine == CLAUDE:
+    def backend(self, engine_id):
+        if engine_id in self._backends:
+            return self._backends[engine_id]
+        config = self.config(engine_id)
+        binary = config.executable or config.kind
+        if config.kind == CLAUDE:
             from .claude_cli import ClaudeBackend
-            backend = ClaudeBackend(cwd=self.cwd, binary=path)
-        elif engine == CODEX:
+            backend = ClaudeBackend(cwd=self.project.cwd, binary=binary)
+        elif config.kind == CODEX:
             from .codex_app import CodexAppBackend
-            backend = CodexAppBackend(cwd=self.cwd, binary=path)
-        elif engine == OPENCODE:
+            backend = CodexAppBackend(cwd=self.project.cwd, binary=binary)
+        elif config.kind == OPENCODE:
             from .opencode_http import OpencodeBackend
-            backend = OpencodeBackend(port=self.opencode_port, cwd=self.cwd,
-                                      binary=path)
+            base = int(config.options.get("base_port", 4096))
+            backend = OpencodeBackend(port=base + self.port_offset,
+                                      cwd=self.project.cwd, binary=binary)
         else:
-            raise KeyError("no engine called %r" % engine)
-        self._backends[key] = backend
+            raise RuntimeError("unknown engine kind %s" % config.kind)
+        self._backends[engine_id] = backend
         return backend
 
-    def agent(self, member, name, instructions):
-        """One live conversation for one seat."""
-        backend = self.backend(member.engine, member.binary)
-        kw = {"model": member.model, "instructions": instructions}
-        if member.engine == CLAUDE:
-            kw["effort"] = member.effort
-        return backend.agent(name, **kw)
+    def agent(self, member, name, instructions, native_id=None):
+        config = self.config(member.engine)
+        backend = self.backend(member.engine)
+        values = {"model": member.model, "instructions": instructions}
+        if config.kind == CLAUDE:
+            values["effort"] = member.effort
+        agent = LimitedAgent(backend.agent(name, **values),
+                             self._limits[config.id], self.checkpoint,
+                             resume_mode=config.mode == "resume")
+        if native_id:
+            try:
+                agent.resumed = agent.resume(native_id)
+            except Exception:
+                agent.resumed = False
+        return agent
 
-    def models_for(self, engine, binary=None):
-        """What this engine can be asked for right now.
-
-        Only opencode can answer for itself; for the other two the list is
-        what we know, and a name typed by hand is equally valid.
-        """
-        description = DESCRIPTIONS[engine]
-        if not description["models_from_engine"]:
-            return list(description["models"])
+    def models_for(self, engine_id):
+        config = self.config(engine_id)
+        if config.kind != OPENCODE:
+            return list(CAPABILITIES[config.kind]["models"])
         try:
-            backend = self.backend(engine, binary)
+            backend = self.backend(engine_id)
             backend.start()
             return ["%s/%s" % pair for pair in backend.models()]
         except Exception:
             return []
 
+    def status(self):
+        return [{"engine": key, "label": backend.label,
+                 "alive": bool(getattr(backend, "alive", False)),
+                 "pids": list(getattr(backend, "pids", []))}
+                for key, backend in self._backends.items()]
+
     def stop(self):
-        for backend in self._backends.values():
+        for backend in list(self._backends.values()):
             try:
                 backend.stop()
             except Exception:
                 pass
         self._backends.clear()
 
-    def status(self):
-        live = []
-        for (engine, _), backend in self._backends.items():
-            live.append({"engine": engine, "label": backend.label,
-                         "alive": bool(getattr(backend, "alive", False)),
-                         "pids": list(getattr(backend, "pids", []))})
-        return live
+
+class RuntimeManager:
+    """Lazily owns one independent engine set per logically open project."""
+    def __init__(self, sinaxa, factory=None):
+        self.sinaxa = sinaxa
+        self.factory = factory
+        self._projects = {}
+
+    def for_project(self, project, checkpoint=None):
+        if not project.is_open:
+            raise RuntimeError("project is closed")
+        if project.id not in self._projects:
+            if self.factory:
+                runtime = self.factory(project)
+            else:
+                index = sorted(p.id for p in self.sinaxa.projects).index(project.id)
+                runtime = ProjectEngines(project, self.sinaxa.engines,
+                                         port_offset=index, checkpoint=checkpoint)
+            self._projects[project.id] = runtime
+        return self._projects[project.id]
+
+    def close(self, project_id):
+        runtime = self._projects.pop(project_id, None)
+        if runtime:
+            runtime.stop()
+
+    def status(self, project_id):
+        runtime = self._projects.get(project_id)
+        return runtime.status() if runtime else []
+
+    def stop(self):
+        for project_id in list(self._projects):
+            self.close(project_id)
+
+
+def describe(config):
+    out = config.as_dict()
+    out.update(CAPABILITIES.get(config.kind, {}))
+    return out
+
+
+__all__ = ["CLAUDE", "CODEX", "OPENCODE", "ProjectEngines",
+           "RuntimeManager", "describe"]

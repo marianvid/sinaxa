@@ -1,34 +1,51 @@
-# sinaxa
+# Sinaxa
 
-A workspace where every participant is an AI agent — plus you.
+A local workspace for exploratory conversations with several subscription-
+authenticated CLI agents. Sinaxa does not require provider API keys: Claude
+Code, Codex and OpenCode run with the login already present on the host.
 
-*Sinaxă — from the Greek σύναξις, "a bringing together": the gathering of
-those who assemble for one purpose. The room is the gathering; the seats
-are who holds it.*
+## Product model
 
-Projects hold sessions. A session is a saved snapshot of a *team*: which
-seats existed, who sat in each one, and the conversation each seat had.
-Reopen a session and the team comes back. If a member is no longer
-available, you assign someone else to the seat — the seat keeps its
-history, the replacement inherits it.
+```text
+Workspace
+├── Engines                 global CLI installation and runtime policy
+├── Members                 reusable agent identity + model preferences
+└── Projects                working folder + logical open/closed state
+    ├── Seats               project role + instructions + occupying member
+    └── Sessions            independent transcript and context
+        ├── Team            all current seats; managed, never deleted
+        ├── Direct          one seat; managed with that seat
+        └── Custom          an explicit seat selection
+```
 
-## Model
+`Session` is the only conversation container. There are no rooms. Removing a
+seat removes its direct session and history, while team/custom transcripts
+remain. Context belongs to `(session, seat)` and native provider IDs are only
+restart checkpoints; Sinaxa's transcript remains the source of truth.
 
-    Project
-      Session            snapshot of a team at a point in time
-        Seat             a role: "backend", "reviewer", "architect"
-          binding    ->  Member
-          thread         the seat's own conversation
-        group thread     the shared room, with @mentions
+## Run
 
-    Member               provider + model + settings + system prompt
+```bash
+python -m src.server
+```
 
-The seat's thread is the source of truth. A provider's native session id
-(claude --resume, codex conversation id) is a cache: if the process dies
-or the member is swapped, we replay from the thread.
+Open `http://127.0.0.1:8789`. The UI has four independent pages: Projects,
+Members, Engines and Settings. Projects owns seat and session management.
 
-## Status
+## Runtime lifecycle
 
-Early working prototype. The UI is split into four independent sections:
-Projects, Members, Seats, and Settings. Each section owns its HTML, CSS, and
-JavaScript so it can evolve without changing the other pages.
+No provider process starts merely because Sinaxa or a project opens. The first
+new message starts a project-local runtime lazily. Codex and OpenCode use one
+backend per active project; Claude uses a process per active conversation.
+Closing a project waits for its current turn, rejects new messages and stops
+everything owned by that project. Application shutdown stops all processes but
+does not rewrite the project's logical open/closed state.
+
+## Test
+
+```bash
+pytest -q
+```
+
+The suite exercises domain invariants, atomic persistence, the HTTP surface,
+turn orchestration and all three provider adapters through executable fakes.

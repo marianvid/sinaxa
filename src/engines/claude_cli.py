@@ -89,6 +89,14 @@ class ClaudeAgent:
                 self.session.activity = ""
                 return None, {"error": str(exc)[:400]}
 
+    def resume(self, session_id):
+        """Adopt a native Claude conversation without starting it eagerly."""
+        if not session_id:
+            return False
+        self.session.session_id = session_id
+        self.session.turns = 1
+        return True
+
     def status(self):
         pid = self.session.pid
         return {"provider": self.provider, "model": self.model or "default",
