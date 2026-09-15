@@ -13,7 +13,7 @@ function render(){
   </div>`).join('');
   el('content').innerHTML = `<h3>Settings</h3>
     <div class="lead">Preferences on this page are local to this browser. CLI
-      member configuration remains isolated on the Members page.</div>
+      agent configuration remains isolated on the Agents page.</div>
     <div class="settings-group"><h4>Available engines</h4>${engines || '<div class="empty">No engines reported.</div>'}</div>`;
 }
 

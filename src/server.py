@@ -14,7 +14,7 @@ from .model import ModelError
 HOST, PORT = "127.0.0.1", 8789
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(ROOT, "ui")
-PAGES = ("projects", "members", "engines", "settings")
+PAGES = ("projects", "members", "seats", "engines", "settings")
 STATIC = {"/%s.%s" % (page, ext): ("%s.%s" % (page, ext),
           {"html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
            "js": "text/javascript; charset=utf-8"}[ext])
