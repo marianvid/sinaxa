@@ -26,14 +26,30 @@ def test_navigation_has_no_separate_seats_page():
         assert "/engines.html" in html
 
 
-def test_navigation_is_icon_only_and_directly_below_brand():
+def test_navigation_is_icon_only_in_a_global_header():
     ui = Path(__file__).parents[1] / "ui"
     for page in ("projects", "members", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
-        assert html.index('class="brand"') < html.index('class="nav"') < html.index('class="hd"')
-        for label in ("Projects", "Members", "Engines", "Settings"):
+        assert html.index('class="global-header"') < html.index('class="side"')
+        assert 'class="global-nav"' in html
+        assert 'class="top"' not in html
+        for label in ("Projects", "Engines", "Settings"):
             assert f'title="{label}" aria-label="{label}"' in html
             assert f'</i>{label}</a>' not in html
+        assert 'title="Agents &amp; seats" aria-label="Agents &amp; seats"' in html
+        assert 'id="themeToggle"' in html
+        assert html.index('class="global-actions"') < html.index('title="Settings"')
+
+
+def test_global_theme_toggle_is_shared_by_every_page():
+    ui = Path(__file__).parents[1] / "ui"
+    assert (ui / "base.js").is_file()
+    assert "sinaxa-theme" in (ui / "base.js").read_text()
+    for page in ("projects", "members", "engines", "settings"):
+        html = (ui / (page + ".html")).read_text()
+        assert '<script src="/base.js"></script>' in html
+    server = (ui.parent / "src" / "server.py").read_text()
+    assert 'STATIC["/base.js"]' in server
 
 
 def test_projects_owns_seats_sessions_search_and_attachments():

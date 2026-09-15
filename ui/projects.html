@@ -5,14 +5,19 @@
   <title>Projects · sinaxa</title><link rel="stylesheet" href="/projects.css">
 </head>
 <body><div class="app">
-  <aside class="side">
+  <header class="global-header">
     <div class="brand"><span class="mark">sinaxa</span></div>
-    <nav class="nav" aria-label="Sections">
+    <nav class="global-nav" aria-label="Sections">
       <a class="nb on" href="/projects.html" title="Projects" aria-label="Projects"><i aria-hidden="true">▤</i></a>
-      <a class="nb" href="/members.html" title="Members" aria-label="Members"><i aria-hidden="true">◉</i></a>
+      <a class="nb" href="/members.html" title="Agents &amp; seats" aria-label="Agents &amp; seats"><i aria-hidden="true">◉</i></a>
       <a class="nb" href="/engines.html" title="Engines" aria-label="Engines"><i aria-hidden="true">⌘</i></a>
-      <a class="nb" href="/settings.html" title="Settings" aria-label="Settings"><i aria-hidden="true">⚙</i></a>
     </nav>
+    <div class="global-actions">
+      <button class="global-action" id="themeToggle" type="button"></button>
+      <a class="global-action" href="/settings.html" title="Settings" aria-label="Settings"><i aria-hidden="true">⚙</i></a>
+    </div>
+  </header>
+  <aside class="side">
     <div class="hd">Projects <u id="newProject" title="New project">+</u></div>
     <div class="scroll">
       <div id="projects" class="projects"></div>
@@ -23,14 +28,14 @@
     </div>
   </aside>
   <section class="main">
-    <header class="top">
+    <div hidden>
       <div class="title"><span class="proj" id="projectTitle">Projects</span><span class="dot">/</span><span class="sess" id="sessionTitle">Select a project</span><span class="sub" id="projectState"></span></div>
-      <div class="seatbar" id="participants"></div><div class="grow"></div>
+      <div class="seatbar" id="participants"></div>
       <button class="chip" id="toggleProject">Close project</button>
       <button class="chip primary" id="newSession">+ Session</button>
       <button class="chip" id="clearContext">Clear context</button>
       <button class="chip icon" id="sessionMenu" aria-label="Session options">•••</button>
-    </header>
+    </div>
     <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"></div>
     <div id="messages" class="thread"></div>
     <div id="composer" class="composer"><div class="cbox">
@@ -42,4 +47,4 @@
   <div class="statusbar" id="statusbar"></div>
 </div>
 <dialog id="dialog"><form method="dialog"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="dialogSave" value="default">Save</button></p></form></dialog>
-<script src="/projects.js"></script></body></html>
+<script src="/base.js"></script><script src="/projects.js"></script></body></html>

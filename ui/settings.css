@@ -52,7 +52,7 @@ html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
   font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
 
-.app{display:grid;grid-template-columns:262px 1fr;grid-template-rows:minmax(0,1fr) auto;
+.app{display:grid;grid-template-columns:262px 1fr;grid-template-rows:46px minmax(0,1fr) auto;
   height:100vh;min-height:0}
 /* Without min-height:0 a grid/flex child grows past its track instead of
    scrolling, which pushes the composer off screen. */
@@ -68,11 +68,23 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 .thread::-webkit-scrollbar-thumb:hover,.scroll::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-hover)}
 .thread::-webkit-scrollbar-track,.scroll::-webkit-scrollbar-track{background:transparent}
 
+/* ---------------------------------------------------------------- global header */
+.global-header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 10px 0 14px;
+  background:var(--bg4);border-bottom:1px solid var(--line)}
+.global-nav,.global-actions{display:flex;align-items:center;gap:3px}
+.global-actions{margin-left:auto}
+.nb,.global-action{width:38px;height:32px;display:flex;align-items:center;justify-content:center;
+  border:0;border-radius:7px;background:transparent;color:var(--dim2);cursor:pointer;
+  text-decoration:none;font:inherit}
+.nb i,.global-action i{font-style:normal;font-size:15px;line-height:1}
+.nb:hover,.global-action:hover{background:var(--bg3);color:var(--fg)}
+.nb.on,.global-action.on{background:var(--bg3);color:var(--accent)}
+
 /* ---------------------------------------------------------------- sidebar */
 .side{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column}
 /* The wordmark is the whole logo: no badge, no icon. A hairline in the two
    brand colours sits under it, the width of the word. */
-.brand{padding:14px 14px 6px}
+.brand{padding:0}
 .brand .mark{display:inline-block;font-size:15px;font-weight:650;letter-spacing:.14em;
   color:var(--fg);line-height:1.1;padding-bottom:5px;position:relative}
 .brand .mark::after{content:"";position:absolute;left:0;right:.14em;bottom:0;height:2px;
@@ -136,14 +148,6 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
 .spin{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--accent);
   border-top-color:transparent;animation:sp .8s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
-
-.nav{border-bottom:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);
-  padding:6px;gap:2px;background:var(--bg4)}
-.nb{display:flex;align-items:center;justify-content:center;padding:7px 2px;
-  border-radius:7px;color:var(--dim2);cursor:pointer;text-decoration:none}
-.nb i{font-style:normal;font-size:15px;line-height:1}
-.nb:hover{background:var(--bg3);color:var(--fg)}
-.nb.on{background:var(--bg3);color:var(--accent)}
 
 /* ---------------------------------------------------------------- main */
 .main{display:flex;flex-direction:column;min-width:0}
