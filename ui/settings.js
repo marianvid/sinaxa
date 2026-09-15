@@ -15,9 +15,6 @@ function render(){
     <div class="lead">Preferences on this page are local to this browser. CLI
       member configuration remains isolated on the Members page.</div>
     <div class="settings-group"><h4>Available engines</h4>${engines || '<div class="empty">No engines reported.</div>'}</div>`;
-  el('statusbar').innerHTML = `<b>${(S.engines || []).length}</b> engines<span class="sep">·</span>`
-    + `<b>${(S.members || []).length}</b> members<span class="sep">·</span>`
-    + `<b>${(S.engines || []).length}</b> engines`;
 }
 
 async function refresh(){

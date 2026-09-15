@@ -16,4 +16,14 @@
   if (toggle) toggle.addEventListener('click', () => {
     applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
   });
+
+  const projectList = document.querySelector('[data-project-list]');
+  if (projectList) fetch('/api/state').then(response => response.json()).then(data => {
+    projectList.innerHTML = (data.projects || []).map(project => {
+      const name = String(project.name || '').replace(/[&<>]/g, character => (
+        {'&': '&amp;', '<': '&lt;', '>': '&gt;'}[character]
+      ));
+      return `<a class="project" href="/projects.html"><span><i class="dot ${project.state}"></i>${name}</span><small>${project.state}</small></a>`;
+    }).join('');
+  }).catch(() => {});
 })();

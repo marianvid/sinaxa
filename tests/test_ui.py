@@ -26,19 +26,37 @@ def test_navigation_has_no_separate_seats_page():
         assert "/engines.html" in html
 
 
-def test_navigation_is_icon_only_in_a_global_header():
+def test_named_navigation_is_grouped_at_the_top_right():
     ui = Path(__file__).parents[1] / "ui"
     for page in ("projects", "members", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         assert html.index('class="global-header"') < html.index('class="side"')
         assert 'class="global-nav"' in html
         assert 'class="top"' not in html
-        for label in ("Projects", "Engines", "Settings"):
-            assert f'title="{label}" aria-label="{label}"' in html
-            assert f'</i>{label}</a>' not in html
-        assert 'title="Agents &amp; seats" aria-label="Agents &amp; seats"' in html
+        for label in ("Chats", "Agents &amp; seats", "Engines", "Settings"):
+            assert f'<span>{label}</span>' in html
         assert 'id="themeToggle"' in html
-        assert html.index('class="global-actions"') < html.index('title="Settings"')
+        assert html.index('class="global-nav"') < html.index('class="global-actions"')
+        assert html.index('id="themeToggle"') < html.index('<span>Settings</span>')
+
+
+def test_sidebar_is_always_projects_without_seats_or_sessions_sections():
+    ui = Path(__file__).parents[1] / "ui"
+    for page in ("projects", "members", "engines", "settings"):
+        html = (ui / (page + ".html")).read_text()
+        side = html[html.index('class="side"'):html.index('</aside>')]
+        assert '>Projects ' in side
+        assert 'sidebar-group' not in side
+        assert '>Seats<' not in side
+        assert '>Sessions<' not in side
+
+
+def test_status_bar_is_removed_from_every_page():
+    ui = Path(__file__).parents[1] / "ui"
+    for page in ("projects", "members", "engines", "settings"):
+        assert 'statusbar' not in (ui / (page + ".html")).read_text()
+    assert '.statusbar' not in (ui / "base.css").read_text()
+    assert '.statusbar' not in (ui / "settings.css").read_text()
 
 
 def test_global_theme_toggle_is_shared_by_every_page():

@@ -11,23 +11,22 @@
   <header class="global-header">
     <div class="brand"><span class="mark">sinaxa</span></div>
     <nav class="global-nav" aria-label="Sections">
-      <a class="nb" href="/projects.html" title="Projects" aria-label="Projects"><i aria-hidden="true">▤</i></a>
-      <a class="nb" href="/members.html" title="Agents &amp; seats" aria-label="Agents &amp; seats"><i aria-hidden="true">◉</i></a>
-      <a class="nb" href="/engines.html" title="Engines" aria-label="Engines"><i aria-hidden="true">⌘</i></a>
+      <a class="nb" href="/projects.html"><i aria-hidden="true">▤</i><span>Chats</span></a>
+      <a class="nb" href="/members.html"><i aria-hidden="true">◉</i><span>Agents &amp; seats</span></a>
+      <a class="nb" href="/engines.html"><i aria-hidden="true">⌘</i><span>Engines</span></a>
     </nav>
     <div class="global-actions">
       <button class="global-action" id="themeToggle" type="button"></button>
-      <a class="global-action on" href="/settings.html" title="Settings" aria-label="Settings"><i aria-hidden="true">⚙</i></a>
+      <a class="global-action on" href="/settings.html"><i aria-hidden="true">⚙</i><span>Settings</span></a>
     </div>
   </header>
   <aside class="side">
-    <div class="hd">Workspace</div>
-    <div class="scroll"><div class="section-note">Local interface preferences and engine information.</div></div>
+    <div class="hd">Projects <a class="sidebar-add" href="/projects.html" title="New project">+</a></div>
+    <div class="scroll"><div class="projects" data-project-list></div></div>
   </aside>
   <main class="main">
     <section class="view" id="content"></section>
   </main>
-  <div class="statusbar" id="statusbar"></div>
 </div>
 <script src="/base.js"></script><script src="/settings.js"></script>
 </body>

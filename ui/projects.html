@@ -8,23 +8,19 @@
   <header class="global-header">
     <div class="brand"><span class="mark">sinaxa</span></div>
     <nav class="global-nav" aria-label="Sections">
-      <a class="nb on" href="/projects.html" title="Projects" aria-label="Projects"><i aria-hidden="true">▤</i></a>
-      <a class="nb" href="/members.html" title="Agents &amp; seats" aria-label="Agents &amp; seats"><i aria-hidden="true">◉</i></a>
-      <a class="nb" href="/engines.html" title="Engines" aria-label="Engines"><i aria-hidden="true">⌘</i></a>
+      <a class="nb on" href="/projects.html"><i aria-hidden="true">▤</i><span>Chats</span></a>
+      <a class="nb" href="/members.html"><i aria-hidden="true">◉</i><span>Agents &amp; seats</span></a>
+      <a class="nb" href="/engines.html"><i aria-hidden="true">⌘</i><span>Engines</span></a>
     </nav>
     <div class="global-actions">
       <button class="global-action" id="themeToggle" type="button"></button>
-      <a class="global-action" href="/settings.html" title="Settings" aria-label="Settings"><i aria-hidden="true">⚙</i></a>
+      <a class="global-action" href="/settings.html"><i aria-hidden="true">⚙</i><span>Settings</span></a>
     </div>
   </header>
   <aside class="side">
     <div class="hd">Projects <u id="newProject" title="New project">+</u></div>
     <div class="scroll">
       <div id="projects" class="projects"></div>
-      <div class="sidebar-group"><span>Seats</span><u id="newSeat" title="Add seat">+</u></div>
-      <div id="seats" class="sidebar-list"></div>
-      <div class="sidebar-group"><span>Sessions</span><u id="newSessionSmall" title="New session">+</u></div>
-      <div id="sessions" class="sidebar-list"></div>
     </div>
   </aside>
   <section class="main">
@@ -35,6 +31,9 @@
       <button class="chip primary" id="newSession">+ Session</button>
       <button class="chip" id="clearContext">Clear context</button>
       <button class="chip icon" id="sessionMenu" aria-label="Session options">•••</button>
+      <button id="newSeat" type="button">Add seat</button>
+      <button id="newSessionSmall" type="button">New session</button>
+      <div id="seats"></div><div id="sessions"></div>
     </div>
     <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"></div>
     <div id="messages" class="thread"></div>
@@ -44,7 +43,6 @@
       <div class="ctools"><button class="tool" data-format="**" title="Bold">B</button><button class="tool italic" data-format="_" title="Italic">I</button><button class="tool" id="attach" title="Attach image">⌕</button><input id="files" type="file" accept="image/*" multiple hidden><div class="grow"></div><button class="send" id="send">Send</button></div>
     </div></div>
   </section>
-  <div class="statusbar" id="statusbar"></div>
 </div>
 <dialog id="dialog"><form method="dialog"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="dialogSave" value="default">Save</button></p></form></dialog>
 <script src="/base.js"></script><script src="/projects.js"></script></body></html>
