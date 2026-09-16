@@ -488,11 +488,22 @@ class Sinaxa:
     def seat_name(self, project, seat):
         return self.member(seat.occupant).name if seat.occupant else "Unassigned"
 
+    def seat_runs_engine(self, seat):
+        """Whether a seat should receive an automated conversational turn."""
+        if not seat.occupant:
+            return False
+        try:
+            return not self.member(seat.occupant).is_human
+        except ModelError:
+            return True
+
     def seat_trouble(self, project, seat):
         if not seat.occupant:
             return "this seat has no agent"
         try:
             member = self.member(seat.occupant)
+            if member.is_human:
+                return None
             engine = self.engine(member.engine)
         except ModelError as exc:
             return str(exc)
@@ -501,7 +512,7 @@ class Sinaxa:
     def mentioned(self, project, text, seats):
         found = []
         for seat in seats:
-            if not seat.occupant:
+            if not self.seat_runs_engine(seat):
                 continue
             member = self.member(seat.occupant)
             if any(re.search(r"(?<![\w@])@%s\b" % re.escape(name), text,

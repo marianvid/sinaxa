@@ -93,3 +93,22 @@ def test_type_templates_are_persisted_and_seed_new_projects(app):
     assert made.type_id == project_type.id
     assert made.seats[0].template_id == template.id
     assert made.seats[0].occupant is None
+
+
+def test_human_seat_participates_without_being_run_as_an_engine(app):
+    project, _, _ = furnish(app)
+    lead = app.sinaxa.lead
+    human = app.add_seat(project.id, "Human lead", "Lead the discussion", lead.id)
+
+    _, job = app.say(project.id, project.team_session.id, "Discuss this")
+    wait(app, job)
+    messages = app.state(project.id, project.team_session.id)["messages"]
+    assert [message["author_name"] for message in messages] == [
+        "Marian", "Astra", "Opus"]
+    assert app.sinaxa.seat_trouble(project, human) is None
+
+    direct = project.direct_session(human.id)
+    _, direct_job = app.say(project.id, direct.id, "A private note")
+    wait(app, direct_job)
+    assert [message["author_name"] for message in
+            app.state(project.id, direct.id)["messages"]] == ["Marian"]

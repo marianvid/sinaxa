@@ -136,7 +136,8 @@ class Talk:
 
     def speakers_for(self, text, author_seat=None):
         seats = [seat for seat in self.participants()
-                 if seat.id != author_seat and seat.occupant]
+                 if seat.id != author_seat
+                 and self.sinaxa.seat_runs_engine(seat)]
         return self.sinaxa.mentioned(self.project, text, seats) or seats
 
     def post(self, text, author="lead", author_name=None, kind=None,
