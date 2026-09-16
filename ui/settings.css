@@ -77,6 +77,8 @@ body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
   border:0;border-radius:7px;background:transparent;color:var(--dim2);cursor:pointer;
   text-decoration:none;font:inherit;font-size:12px;white-space:nowrap}
 .global-action#themeToggle{width:38px;padding:0}
+.global-divider{width:1px;height:20px;background:var(--line);margin:0 5px}
+.theme-icon{width:16px;height:16px;display:block}
 .nb i,.global-action i{font-style:normal;font-size:15px;line-height:1}
 .nb:hover,.global-action:hover{background:var(--bg3);color:var(--fg)}
 .nb.on,.global-action.on{background:var(--bg3);color:var(--accent)}

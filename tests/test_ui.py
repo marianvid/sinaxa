@@ -40,7 +40,8 @@ def test_named_navigation_is_grouped_at_the_top_right():
             assert f'<span>{label}</span>' in html
         assert 'id="themeToggle"' in html
         assert html.index('class="global-nav"') < html.index('class="global-actions"')
-        assert html.index('id="themeToggle"') < html.index('<span>Settings</span>')
+        assert html.index('<span>Settings</span>') < html.index('class="global-divider"')
+        assert html.index('class="global-divider"') < html.index('id="themeToggle"')
 
 
 def test_sidebar_is_always_projects_without_seats_or_sessions_sections():
@@ -65,7 +66,10 @@ def test_status_bar_is_removed_from_every_page():
 def test_global_theme_toggle_is_shared_by_every_page():
     ui = Path(__file__).parents[1] / "ui"
     assert (ui / "base.js").is_file()
-    assert "sinaxa-theme" in (ui / "base.js").read_text()
+    base_js = (ui / "base.js").read_text()
+    assert "sinaxa-theme" in base_js
+    assert '<svg class="theme-icon"' in base_js
+    assert "☀" not in base_js and "☾" not in base_js
     for page in ("projects", "members", "seats", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         assert '<script src="/base.js"></script>' in html
