@@ -250,8 +250,21 @@ class App:
 
     def update_session(self, project_id, session_id, **fields):
         project, session = self.locate(project_id, session_id)
-        if session.kind != CUSTOM:
+        structural = {"name", "participants", "archived"}.intersection(fields)
+        if session.kind != CUSTOM and structural:
             raise ModelError("direct and team sessions are managed by the project")
+        if "turn_timeout" in fields:
+            value = int(fields["turn_timeout"])
+            if not 30 <= value <= 7200:
+                raise ModelError(
+                    "agent timeout must be between 30 and 7200 seconds")
+            session.turn_timeout = value
+        if "max_agent_turns" in fields:
+            value = int(fields["max_agent_turns"])
+            if not 1 <= value <= 100:
+                raise ModelError(
+                    "maximum agent turns must be between 1 and 100")
+            session.max_agent_turns = value
         if "name" in fields:
             if not fields["name"].strip():
                 raise ModelError("a session needs a name")

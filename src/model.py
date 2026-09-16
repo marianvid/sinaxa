@@ -12,6 +12,8 @@ import uuid
 HUMAN, AGENT = "human", "agent"
 DIRECT, TEAM, CUSTOM = "direct", "team", "custom"
 OPEN, CLOSED = "open", "closed"
+DEFAULT_TURN_TIMEOUT = 1800
+DEFAULT_MAX_AGENT_TURNS = 24
 
 PALETTE = ["#2f6fd0", "#c96442", "#3fbf7f", "#7c6cf0", "#e0a53f",
            "#38a9a2", "#d05f9c", "#8a9a3b"]
@@ -171,7 +173,8 @@ class Session:
 
     def __init__(self, name, participants=None, kind=CUSTOM, id=None, seq=0,
                  context_start_seq=0, archived=False, created_at=None,
-                 last_activity_at=None):
+                 last_activity_at=None, turn_timeout=DEFAULT_TURN_TIMEOUT,
+                 max_agent_turns=DEFAULT_MAX_AGENT_TURNS):
         if kind not in (DIRECT, TEAM, CUSTOM):
             raise ModelError("unknown session kind")
         if kind == CUSTOM and not (name or "").strip():
@@ -185,6 +188,12 @@ class Session:
         self.archived = bool(archived)
         self.created_at = created_at
         self.last_activity_at = last_activity_at
+        self.turn_timeout = int(turn_timeout)
+        self.max_agent_turns = int(max_agent_turns)
+        if not 30 <= self.turn_timeout <= 7200:
+            raise ModelError("agent timeout must be between 30 and 7200 seconds")
+        if not 1 <= self.max_agent_turns <= 100:
+            raise ModelError("maximum agent turns must be between 1 and 100")
 
     @property
     def managed(self):
@@ -195,7 +204,9 @@ class Session:
                 "participants": self.participants, "kind": self.kind,
                 "seq": self.seq, "context_start_seq": self.context_start_seq,
                 "archived": self.archived, "created_at": self.created_at,
-                "last_activity_at": self.last_activity_at}
+                "last_activity_at": self.last_activity_at,
+                "turn_timeout": self.turn_timeout,
+                "max_agent_turns": self.max_agent_turns}
 
     @classmethod
     def from_dict(cls, raw):

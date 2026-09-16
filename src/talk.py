@@ -2,17 +2,22 @@
 
 import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from .model import ModelError
 
-MAX_HOPS = 3
-TURN_TIMEOUT = 600
 PREAMBLE = """You are {name}, occupying the {role} seat in project {project}.
 This conversation is the session {session}. The human lead is {lead}.
 Participants: {participants}.
 
-Use @Name only when another participant should answer. Be conversational and
-concise unless the lead asks for a detailed artifact.
+Communication between participants is mediated by this transcript. To ask
+another participant to answer, address them as @Name. Do not use provider-native
+agent messaging or agent-discovery tools for Sinaxa participants. A message
+without a mention from the human lead is for the whole session. If you were not
+mentioned, respond only when you can add material value; otherwise answer with
+exactly [NO_REPLY]. If you mention another participant, you are explicitly
+requesting another turn from them. Be conversational and concise unless the
+lead asks for a detailed artifact.
 
 Seat instructions:
 {prompt}"""
@@ -27,20 +32,21 @@ class Conversation:
 
 
 class Talk:
-    def __init__(self, sinaxa, store, project, session, engines,
-                 max_hops=MAX_HOPS):
+    def __init__(self, sinaxa, store, project, session, engines):
         self.sinaxa = sinaxa
         self.store = store
         self.project = project
         self.session = session
         self.engines = engines
-        self.max_hops = max_hops
         self.conversations = {}
         self.busy = set()
         self._lock = threading.RLock()
+        self._post_lock = threading.RLock()
+        self._round_lock = threading.Lock()
 
     def conversation(self, seat):
-        return self.conversations.setdefault(seat.id, Conversation(seat.id))
+        with self._lock:
+            return self.conversations.setdefault(seat.id, Conversation(seat.id))
 
     def participants(self):
         return [self.project.seat(seat_id)
@@ -114,7 +120,7 @@ class Talk:
                 and message.get("seq", 0) > conversation.delivered
                 and message.get("kind") != "boundary"]
 
-    def deliver(self, seat, message):
+    def deliver(self, seat, message, required=False):
         agent = self.start(seat)
         if not agent:
             return None, {"error": self.conversation(seat).trouble}
@@ -124,10 +130,18 @@ class Talk:
         for item in batch:
             if carried:
                 paths.extend(self.store.image_paths(self.project, self.session, item))
-        answer, meta = agent.ask("\n".join(self.line(item, carried) for item in batch),
-                                 timeout=TURN_TIMEOUT, images=paths)
+        routing = ("[Sinaxa routing] You were explicitly @mentioned and must "
+                   "answer." if required else
+                   "[Sinaxa routing] You were not explicitly mentioned. "
+                   "Answer only if relevant; otherwise return [NO_REPLY].")
+        prompt = "\n".join(self.line(item, carried) for item in batch)
+        prompt = "%s\n\n%s" % (prompt, routing)
+        answer, meta = agent.ask(prompt, timeout=self.session.turn_timeout,
+                                 images=paths)
         conversation = self.conversation(seat)
-        conversation.delivered = message["seq"]
+        # A queued mention can become stale after a newer transcript batch was
+        # delivered. Never move the cursor backwards in that case.
+        conversation.delivered = max(conversation.delivered, message["seq"])
         native_id = agent.native_id() if hasattr(agent, "native_id") else None
         self.store.save_checkpoint(self.project, self.session, seat.id, {
             "native_id": native_id, "delivered": conversation.delivered,
@@ -138,51 +152,106 @@ class Talk:
         seats = [seat for seat in self.participants()
                  if seat.id != author_seat
                  and self.sinaxa.seat_runs_engine(seat)]
-        return self.sinaxa.mentioned(self.project, text, seats) or seats
+        if author_seat is None:
+            return seats
+        return self.sinaxa.mentioned(self.project, text, seats)
 
     def post(self, text, author="lead", author_name=None, kind=None,
              images=None, meta=None):
-        self.session.seq += 1
-        now = time.time()
-        self.session.last_activity_at = now
-        message = {"seq": self.session.seq, "author": author,
-                   "author_name": author_name or (
-                       self.sinaxa.lead.name if self.sinaxa.lead else "You"),
-                   "text": text, "ts": now}
-        if kind:
-            message["kind"] = kind
-        if images:
-            message["images"] = list(images)
-        if meta:
-            message["meta"] = meta
-        self.store.append(self.project, self.session, message)
-        self.store.save_project(self.project)
-        return message
+        with self._post_lock:
+            self.session.seq += 1
+            now = time.time()
+            self.session.last_activity_at = now
+            message = {"seq": self.session.seq, "author": author,
+                       "author_name": author_name or (
+                           self.sinaxa.lead.name if self.sinaxa.lead else "You"),
+                       "text": text, "ts": now}
+            if kind:
+                message["kind"] = kind
+            if images:
+                message["images"] = list(images)
+            if meta:
+                message["meta"] = meta
+            self.store.append(self.project, self.session, message)
+            self.store.save_project(self.project)
+            return message
 
     def run_turn(self, message, author_seat=None, hops=None, targets=None):
-        hops = self.max_hops if hops is None else hops
-        speakers = targets or self.speakers_for(message["text"], author_seat)
-        follow = []
-        for seat in speakers:
-            self.busy.add(seat.id)
-            try:
-                answer, meta = self.deliver(seat, message)
-                name = self.sinaxa.seat_name(self.project, seat)
-                if answer is None:
-                    self.post(meta.get("error", "engine failed"), author=seat.id,
-                              author_name=name, kind="error", meta=meta)
-                    continue
-                reply = self.post(answer, author=seat.id, author_name=name, meta=meta)
-                if hops > 0:
-                    mentioned = self.sinaxa.mentioned(
-                        self.project, answer,
-                        [one for one in self.participants() if one.id != seat.id])
-                    if mentioned:
-                        follow.append((reply, seat.id, mentioned))
-            finally:
-                self.busy.discard(seat.id)
-        for reply, source, mentioned in follow:
-            self.run_turn(reply, source, hops - 1, mentioned)
+        del hops  # retained for callers from the pre-round scheduler API
+        with self._round_lock:
+            participants = [seat for seat in self.participants()
+                            if self.sinaxa.seat_runs_engine(seat)]
+            initial = targets if targets is not None else self.speakers_for(
+                message["text"], author_seat)
+            explicitly_mentioned = {seat.id for seat in self.sinaxa.mentioned(
+                self.project, message["text"], participants)}
+            pending = {}
+            active_by_seat = {}
+            future_meta = {}
+            turns = 0
+            limit = self.session.max_agent_turns
+
+            def enqueue(seat, through, required):
+                conversation = self.conversation(seat)
+                if conversation.delivered >= through["seq"]:
+                    return
+                queued = pending.get(seat.id)
+                if not queued or through["seq"] > queued[1]["seq"]:
+                    pending[seat.id] = (seat, through, required)
+                elif required:
+                    pending[seat.id] = (queued[0], queued[1], True)
+
+            for seat in initial:
+                enqueue(seat, message, seat.id in explicitly_mentioned)
+
+            workers = max(1, len(participants))
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="sinaxa-agent") as pool:
+                while pending or future_meta:
+                    for seat_id in list(pending):
+                        if turns >= limit:
+                            break
+                        if seat_id in active_by_seat:
+                            continue
+                        seat, through, required = pending.pop(seat_id)
+                        self.busy.add(seat.id)
+                        future = pool.submit(self.deliver, seat, through, required)
+                        active_by_seat[seat.id] = future
+                        future_meta[future] = (seat, through)
+                        turns += 1
+
+                    if not future_meta:
+                        break
+                    completed, _ = wait(tuple(future_meta),
+                                        return_when=FIRST_COMPLETED)
+                    for future in completed:
+                        seat, through = future_meta.pop(future)
+                        active_by_seat.pop(seat.id, None)
+                        self.busy.discard(seat.id)
+                        name = self.sinaxa.seat_name(self.project, seat)
+                        try:
+                            answer, meta = future.result()
+                        except Exception as exc:
+                            answer, meta = None, {"error": str(exc)[:400]}
+                        if answer is None:
+                            self.post(meta.get("error", "engine failed"),
+                                      author=seat.id, author_name=name,
+                                      kind="error", meta=meta)
+                            continue
+                        if answer.strip().upper() in {"NO_REPLY", "[NO_REPLY]"}:
+                            continue
+                        reply = self.post(answer, author=seat.id,
+                                          author_name=name, meta=meta)
+                        mentioned = self.sinaxa.mentioned(
+                            self.project, answer,
+                            [one for one in participants if one.id != seat.id])
+                        for target in mentioned:
+                            enqueue(target, reply, True)
+
+            if pending:
+                self.post("Round paused after %d agent turns. Send a new "
+                          "message to continue." % limit,
+                          author="system", kind="boundary")
 
     def say(self, text, images=None):
         if not self.project.is_open:

@@ -1,3 +1,4 @@
+import threading
 import time
 
 import pytest
@@ -38,7 +39,8 @@ def test_message_is_accepted_then_both_team_members_answer(app):
     assert message["author"] == "lead"
     wait(app, job)
     messages = app.state(project.id, project.team_session.id)["messages"]
-    assert [m["author_name"] for m in messages] == ["Marian", "Astra", "Opus"]
+    assert messages[0]["author_name"] == "Marian"
+    assert {m["author_name"] for m in messages[1:]} == {"Astra", "Opus"}
 
 
 def test_direct_session_only_calls_its_seat(app):
@@ -103,8 +105,9 @@ def test_human_seat_participates_without_being_run_as_an_engine(app):
     _, job = app.say(project.id, project.team_session.id, "Discuss this")
     wait(app, job)
     messages = app.state(project.id, project.team_session.id)["messages"]
-    assert [message["author_name"] for message in messages] == [
-        "Marian", "Astra", "Opus"]
+    assert messages[0]["author_name"] == "Marian"
+    assert {message["author_name"] for message in messages[1:]} == {
+        "Astra", "Opus"}
     assert app.sinaxa.seat_trouble(project, human) is None
 
     direct = project.direct_session(human.id)
@@ -112,3 +115,76 @@ def test_human_seat_participates_without_being_run_as_an_engine(app):
     wait(app, direct_job)
     assert [message["author_name"] for message in
             app.state(project.id, direct.id)["messages"]] == ["Marian"]
+
+
+def test_mention_is_mandatory_while_other_agents_may_decline(tmp_path):
+    engines = FakeEngines({"Astra": "addressed answer",
+                           "Opus": "[NO_REPLY]"})
+    app = App(tmp_path, cwd=str(tmp_path), engines=engines)
+    try:
+        project, _, _ = furnish(app)
+        _, job = app.say(project.id, project.team_session.id,
+                         "@Astra answer this")
+        wait(app, job)
+
+        messages = app.state(project.id, project.team_session.id)["messages"]
+        assert [message["author_name"] for message in messages] == [
+            "Marian", "Astra"]
+        assert engines.heard_by("Opus")
+        assert "not explicitly mentioned" in engines.heard_by("Opus")[0]
+        assert "provider-native" in engines.agents["Astra"].instructions
+    finally:
+        app.stop()
+
+
+def test_team_fanout_is_concurrent(tmp_path):
+    barrier = threading.Barrier(2)
+
+    def meet(_):
+        barrier.wait(timeout=1)
+        return "ready"
+
+    engines = FakeEngines({"Astra": meet, "Opus": meet})
+    app = App(tmp_path, cwd=str(tmp_path), engines=engines)
+    try:
+        project, _, _ = furnish(app)
+        _, job = app.say(project.id, project.team_session.id, "Start together")
+        wait(app, job)
+        assert len(app.state(project.id, project.team_session.id)["messages"]) == 3
+    finally:
+        app.stop()
+
+
+def test_agent_mentions_are_processed_fifo_without_cursor_regression(tmp_path):
+    engines = FakeEngines({
+        ("Astra", 1): "@Opus, question from Astra",
+        ("Opus", 1): "@Astra, question from Opus",
+        ("Opus", 2): "answer to Astra",
+        ("Astra", 2): "answer to Opus",
+    })
+    app = App(tmp_path, cwd=str(tmp_path), engines=engines)
+    try:
+        project, astra, opus = furnish(app)
+        _, job = app.say(project.id, project.team_session.id,
+                         "@Astra and @Opus begin")
+        wait(app, job)
+
+        messages = app.state(project.id, project.team_session.id)["messages"]
+        assert messages[0]["author_name"] == "Marian"
+        assert sorted(message["author_name"] for message in messages[1:]) == [
+            "Astra", "Astra", "Opus", "Opus"]
+        checkpoints = app.store.checkpoints(project, project.team_session)
+        assert sorted((checkpoints[astra.id]["delivered"],
+                       checkpoints[opus.id]["delivered"])) == [2, 3]
+    finally:
+        app.stop()
+
+
+def test_conversation_limits_are_configurable_for_managed_sessions(app):
+    project, _, _ = furnish(app)
+    session = project.team_session
+    app.update_session(project.id, session.id, turn_timeout=3600,
+                       max_agent_turns=40)
+    loaded = app.store.load().project(project.id).session(session.id)
+    assert loaded.turn_timeout == 3600
+    assert loaded.max_agent_turns == 40

@@ -13,7 +13,8 @@ UI pages -> HTTP adapter -> App facade
 `model.py` contains invariants and no I/O. `store.py` owns atomic JSON,
 append-only JSONL, attachments, storage accounting and destructive operations
 scoped to its state root. `talk.py` owns context projection, mentions and turn
-propagation. `engines/` owns processes and project isolation. `server.py` only
+propagation, including concurrent fan-out and per-seat pending mailboxes.
+`engines/` owns processes and project isolation. `server.py` only
 parses/serializes requests. Long turns run in an executor, outside HTTP request
 threads, and return an accepted job immediately.
 
