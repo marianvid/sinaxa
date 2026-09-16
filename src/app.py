@@ -297,6 +297,9 @@ class App:
 
     def clear_history(self, project_id, session_id):
         project, session = self.locate(project_id, session_id)
+        if any(job["project"] == project.id and job["session"] == session.id
+               and not job["future"].done() for job in self._jobs.values()):
+            raise ModelError("wait for the current agent round to finish")
         talk = self._talks.pop((project.id, session.id), None)
         if talk:
             talk.stop()

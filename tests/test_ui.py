@@ -83,3 +83,11 @@ def test_projects_owns_seats_sessions_search_and_attachments():
     for marker in ('id="seats"', 'id="sessions"', 'id="search"',
                    'id="files"', 'id="toggleProject"'):
         assert marker in html
+
+
+def test_projects_exposes_clear_session_action():
+    ui = Path(__file__).parents[1] / "ui"
+    assert 'id="clearSession"' in (ui / "projects.html").read_text()
+    script = (ui / "projects.js").read_text()
+    assert "/history" in script
+    assert "Clear all messages and attachments" in script

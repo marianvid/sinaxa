@@ -62,6 +62,22 @@ def test_clear_context_keeps_history_and_adds_boundary(app):
     assert any(m["text"] == "Before" for m in messages)
 
 
+def test_clear_session_removes_history_but_keeps_configuration(app):
+    project, _, _ = furnish(app)
+    session = project.team_session
+    app.update_session(project.id, session.id, turn_timeout=3600,
+                       max_agent_turns=80)
+    app.store.append(project, session, {"seq": 1, "text": "remove me"})
+    session.seq = 1
+
+    app.clear_history(project.id, session.id)
+
+    assert app.store.messages(project, session) == []
+    assert session.seq == 0
+    assert session.turn_timeout == 3600
+    assert session.max_agent_turns == 80
+
+
 def test_close_stops_runtime_but_preserves_logical_state(app):
     project, _, _ = furnish(app)
     app.set_project_open(project.id, False)
