@@ -134,9 +134,8 @@ class Handler(BaseHTTPRequestHandler):
                 "options", "allowed_mcp_servers")))
             return {"ok": True, "member": made.as_dict()}
         if parts == ["api", "seats"]:
-            made = self.app.add_seat(body["project"], body["role"],
-                                     body["prompt"], body.get("occupant"),
-                                     body.get("template_id"))
+            made = self.app.add_seat(body["project"], body["template_id"],
+                                     body.get("occupant"), body.get("prompt"))
             return {"ok": True, "seat": made.as_dict()}
         if parts == ["api", "seat-templates"]:
             made = self.app.add_seat_template(**self.fields(body, (

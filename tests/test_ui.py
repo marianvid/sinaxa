@@ -90,4 +90,14 @@ def test_projects_exposes_clear_session_action():
     assert 'id="clearSession"' in (ui / "projects.html").read_text()
     script = (ui / "projects.js").read_text()
     assert "/history" in script
-    assert "Clear all messages and attachments" in script
+    assert "All messages and attachments" in script
+
+
+def test_projects_exposes_hierarchical_project_navigation_and_overview():
+    ui = Path(__file__).parents[1] / "ui"
+    html = (ui / "projects.html").read_text()
+    script = (ui / "projects.js").read_text()
+    assert 'id="projectOverview"' in html
+    assert 'id="openMain"' in html
+    assert "Direct sessions" in script
+    assert "Main team" in html

@@ -190,15 +190,11 @@ class App:
             return project_type
 
     # project seats ------------------------------------------------------
-    def add_seat(self, project_id, role, prompt, occupant=None,
-                 template_id=None):
+    def add_seat(self, project_id, template_id, occupant=None, prompt=None):
         with self._lock:
             project = self.sinaxa.project(project_id)
-            if occupant:
-                self.sinaxa.member(occupant)
-            if template_id:
-                self.sinaxa.seat_template(template_id)
-            seat = project.add_seat(role, prompt, occupant, template_id)
+            seat = self.sinaxa.add_project_seat(
+                project_id, template_id, occupant, prompt)
             self.store.save_project(project)
             return seat
 

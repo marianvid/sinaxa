@@ -20,8 +20,10 @@ def furnish(app):
     astra = app.add_member(name="Astra", engine="claude")
     opus = app.add_member(name="Opus", engine="claude")
     project = app.add_project("Sinaxa")
-    a = app.add_seat(project.id, "Architect", "Design", astra.id)
-    b = app.add_seat(project.id, "Reviewer", "Review", opus.id)
+    architect = app.sinaxa.seat_template("seat_architect")
+    reviewer = app.add_seat_template(role="Reviewer", prompt="Review")
+    a = app.add_seat(project.id, architect.id, astra.id)
+    b = app.add_seat(project.id, reviewer.id, opus.id)
     return project, a, b
 
 
@@ -116,7 +118,9 @@ def test_type_templates_are_persisted_and_seed_new_projects(app):
 def test_human_seat_participates_without_being_run_as_an_engine(app):
     project, _, _ = furnish(app)
     lead = app.sinaxa.lead
-    human = app.add_seat(project.id, "Human lead", "Lead the discussion", lead.id)
+    template = app.add_seat_template(
+        role="Human lead", prompt="Lead the discussion")
+    human = app.add_seat(project.id, template.id, lead.id)
 
     _, job = app.say(project.id, project.team_session.id, "Discuss this")
     wait(app, job)

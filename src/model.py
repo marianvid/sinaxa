@@ -257,6 +257,8 @@ class Project:
                      if s.kind == DIRECT and s.participants == [seat_id]), None)
 
     def add_seat(self, role, prompt, occupant=None, template_id=None):
+        if not template_id:
+            raise ModelError("a project seat must use a global seat definition")
         if any(s.role.casefold() == role.strip().casefold() for s in self.seats):
             raise ModelError("that role already exists in this project")
         seat = Seat(role, prompt, occupant, template_id=template_id)
@@ -416,6 +418,15 @@ class Sinaxa:
         self.projects.append(project)
         return project
 
+    def add_project_seat(self, project_id, template_id, occupant=None,
+                         prompt=None):
+        project = self.project(project_id)
+        template = self.seat_template(template_id)
+        if occupant:
+            self.member(occupant)
+        return project.add_seat(template.role, prompt or template.prompt,
+                                occupant, template_id=template.id)
+
     def add_seat_template(self, **fields):
         role = fields.get("role", "")
         if any(t.role.casefold() == role.strip().casefold()
@@ -446,6 +457,9 @@ class Sinaxa:
         if any(template_id in project_type.seat_templates
                for project_type in self.project_types):
             raise ModelError("that seat template is still used by a project type")
+        if any(seat.template_id == template_id
+               for project in self.projects for seat in project.seats):
+            raise ModelError("that seat definition is still used by a project")
         self.seat_templates.remove(template)
         return template
 

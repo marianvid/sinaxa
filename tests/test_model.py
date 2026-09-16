@@ -9,21 +9,23 @@ def furnished():
     one = state.add_member(name="Astra", engine="claude")
     two = state.add_member(name="Opus", engine="claude")
     project = state.add_project("Sinaxa", "/tmp")
-    return state, project, one, two
+    architect = state.add_seat_template(role="Architect", prompt="Design")
+    reviewer = state.add_seat_template(role="Reviewer", prompt="Review")
+    return state, project, one, two, architect, reviewer
 
 
 def test_seats_create_direct_sessions_and_join_team():
-    _, project, one, two = furnished()
-    a = project.add_seat("Architect", "Design", one.id)
-    b = project.add_seat("Reviewer", "Review", two.id)
+    state, project, one, two, architect, reviewer = furnished()
+    a = state.add_project_seat(project.id, architect.id, one.id)
+    b = state.add_project_seat(project.id, reviewer.id, two.id)
     assert project.team_session.participants == [a.id, b.id]
     assert sorted(s.kind for s in project.sessions) == [DIRECT, DIRECT, TEAM]
 
 
 def test_removing_seat_removes_direct_but_preserves_group_container():
-    _, project, one, two = furnished()
-    a = project.add_seat("Architect", "Design", one.id)
-    b = project.add_seat("Reviewer", "Review", two.id)
+    state, project, one, two, architect, reviewer = furnished()
+    a = state.add_project_seat(project.id, architect.id, one.id)
+    b = state.add_project_seat(project.id, reviewer.id, two.id)
     custom = project.add_session("Design review", [a.id, b.id])
     _, direct = project.remove_seat(a.id)
     assert direct not in project.sessions
@@ -32,8 +34,8 @@ def test_removing_seat_removes_direct_but_preserves_group_container():
 
 
 def test_managed_sessions_cannot_be_deleted():
-    _, project, one, _ = furnished()
-    seat = project.add_seat("Architect", "Design", one.id)
+    state, project, one, _, architect, _ = furnished()
+    seat = state.add_project_seat(project.id, architect.id, one.id)
     with pytest.raises(ModelError):
         project.remove_session(project.direct_session(seat.id).id)
     with pytest.raises(ModelError):
@@ -41,12 +43,12 @@ def test_managed_sessions_cannot_be_deleted():
 
 
 def test_sessions_default_to_a_wide_agent_turn_budget():
-    _, project, _, _ = furnished()
+    _, project, _, _, _, _ = furnished()
     assert project.team_session.max_agent_turns == 100
 
 
 def test_custom_session_requires_valid_seats():
-    _, project, _, _ = furnished()
+    _, project, _, _, _, _ = furnished()
     with pytest.raises(ModelError):
         project.add_session("Empty", [])
     with pytest.raises(ModelError):
@@ -54,7 +56,7 @@ def test_custom_session_requires_valid_seats():
 
 
 def test_global_and_agent_configuration_are_separate():
-    state, _, one, _ = furnished()
+    state, _, one, _, _, _ = furnished()
     engine = state.engine("claude")
     engine.max_concurrency = 8
     one.model, one.effort = "opus", "high"
@@ -62,7 +64,7 @@ def test_global_and_agent_configuration_are_separate():
 
 
 def test_project_state_and_unique_names_are_domain_rules():
-    state, project, _, _ = furnished()
+    state, project, _, _, _, _ = furnished()
     project.state = CLOSED
     assert not project.is_open
     with pytest.raises(ModelError):
@@ -70,7 +72,7 @@ def test_project_state_and_unique_names_are_domain_rules():
 
 
 def test_project_type_creates_unassigned_project_seats_from_templates():
-    state, _, one, _ = furnished()
+    state, _, one, _, _, _ = furnished()
     architect = state.add_seat_template(
         role="Software architect", prompt="Shape the architecture",
         category="software", default_agent=one.id)
@@ -92,8 +94,25 @@ def test_project_type_creates_unassigned_project_seats_from_templates():
 
 
 def test_templates_in_use_cannot_be_removed():
-    state, _, _, _ = furnished()
+    state, _, _, _, _, _ = furnished()
     template = state.add_seat_template(role="Writer", prompt="Write")
     state.add_project_type(name="Story", seat_templates=[template.id])
     with pytest.raises(ModelError, match="still used"):
         state.remove_seat_template(template.id)
+
+
+def test_project_seats_must_reference_global_definitions():
+    state, project, one, _, architect, _ = furnished()
+    with pytest.raises(ModelError, match="global seat definition"):
+        project.add_seat("Invented role", "Ad hoc", one.id)
+    seat = state.add_project_seat(project.id, architect.id, one.id,
+                                  prompt="Project-specific architecture")
+    assert seat.template_id == architect.id
+    assert seat.prompt == "Project-specific architecture"
+
+
+def test_seat_definition_in_use_by_project_cannot_be_removed():
+    state, project, one, _, architect, _ = furnished()
+    state.add_project_seat(project.id, architect.id, one.id)
+    with pytest.raises(ModelError, match="used by a project"):
+        state.remove_seat_template(architect.id)

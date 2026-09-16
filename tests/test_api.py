@@ -42,10 +42,15 @@ def test_http_crud_and_fast_turn_acceptance(tmp_path):
             "seat_templates": [template["seat_template"]["id"]]})
         _, project = call(base, "POST", "/api/projects", {
             "name": "Sinaxa", "type_id": project_type["project_type"]["id"]})
-        _, seat = call(base, "POST", "/api/seats", {"project": project["project"]["id"], "role": "Architect", "prompt": "Design", "occupant": agent["member"]["id"]})
+        _, extra = call(base, "POST", "/api/seat-templates", {
+            "role": "API architect", "prompt": "Design"})
+        _, seat = call(base, "POST", "/api/seats", {
+            "project": project["project"]["id"],
+            "template_id": extra["seat_template"]["id"],
+            "occupant": agent["member"]["id"]})
         state = call(base, "GET", "/api/state?project=" + project["project"]["id"])[1]
         assert [item["role"] for item in state["seats"]] == [
-            "API reviewer", "Architect"]
+            "API reviewer", "API architect"]
         team = next(s for s in state["projects"][0]["sessions"] if s["kind"] == "team")
         status, accepted = call(base, "POST", "/api/say", {"project": project["project"]["id"], "session": team["id"], "text": "hello"})
         assert status == 200 and accepted["accepted"]

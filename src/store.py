@@ -16,7 +16,7 @@ import threading
 from .model import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
                     Sinaxa)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 REMOVED = ".removed"
 IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{2,5}$")
 
@@ -46,6 +46,31 @@ class Store:
                                               "project.json"))
                 if raw:
                     projects.append(Project.from_dict(raw))
+        migrated = False
+        by_role = {template.role.casefold(): template
+                   for template in seat_templates}
+        for project in projects:
+            changed = False
+            for seat in project.seats:
+                if seat.template_id:
+                    continue
+                template = by_role.get(seat.role.casefold())
+                if not template:
+                    digest = hashlib.sha1(
+                        seat.role.casefold().encode("utf-8")).hexdigest()[:12]
+                    template = SeatTemplate(
+                        id="stp_" + digest, role=seat.role,
+                        prompt=seat.prompt, category="general")
+                    seat_templates.append(template)
+                    by_role[template.role.casefold()] = template
+                seat.template_id = template.id
+                changed = migrated = True
+            if changed:
+                self.save_project(project)
+        if migrated:
+            self._write("seat_templates.json",
+                        [template.as_dict() for template in seat_templates])
+            self._write("meta.json", {"schema": SCHEMA_VERSION})
         return Sinaxa(engines=engines, members=members, projects=projects,
                       seat_templates=seat_templates,
                       project_types=project_types)

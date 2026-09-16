@@ -10,7 +10,8 @@ def test_round_trip_and_atomic_files(tmp_path):
     state = Sinaxa(engines=[EngineConfig("claude", "claude")])
     lead = state.add_member(name="Marian", kind="human")
     project = state.add_project("Sinaxa", str(tmp_path))
-    project.add_seat("Lead", "Lead", lead.id)
+    template = state.add_seat_template(role="Lead", prompt="Lead")
+    state.add_project_seat(project.id, template.id, lead.id)
     store.save_all(state)
     loaded = store.load()
     assert loaded.projects[0].team_session.participants
@@ -48,3 +49,24 @@ def test_new_store_includes_minimum_viable_catalogs(tmp_path):
         "type_blank", "type_software"}
     assert {item.id for item in state.seat_templates} >= {
         "seat_architect", "seat_developer", "seat_tester"}
+
+
+def test_legacy_project_seats_are_migrated_into_the_global_catalog(tmp_path):
+    store = Store(tmp_path)
+    project = {
+        "id": "prj_legacy", "name": "Legacy", "cwd": str(tmp_path),
+        "state": "open", "type_id": "type_blank",
+        "seats": [{"id": "seat_old", "role": "Legacy analyst",
+                   "prompt": "Analyse", "occupant": None,
+                   "template_id": None}],
+        "sessions": []}
+    store._write("projects/prj_legacy/project.json", project)
+
+    state = store.load()
+
+    seat = state.projects[0].seats[0]
+    assert seat.template_id
+    assert state.seat_template(seat.template_id).role == "Legacy analyst"
+    persisted = json.loads(
+        (tmp_path / "projects/prj_legacy/project.json").read_text())
+    assert persisted["seats"][0]["template_id"] == seat.template_id
