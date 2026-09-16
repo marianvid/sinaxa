@@ -40,6 +40,11 @@ def test_managed_sessions_cannot_be_deleted():
         project.remove_session(project.team_session.id)
 
 
+def test_sessions_default_to_a_wide_agent_turn_budget():
+    _, project, _, _ = furnished()
+    assert project.team_session.max_agent_turns == 100
+
+
 def test_custom_session_requires_valid_seats():
     _, project, _, _ = furnished()
     with pytest.raises(ModelError):
