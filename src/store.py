@@ -14,8 +14,8 @@ import tempfile
 import threading
 from collections import deque
 
-from .model import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
-                    Sinaxa)
+from .domain import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
+                     Sinaxa)
 
 SCHEMA_VERSION = 4
 REMOVED = ".removed"

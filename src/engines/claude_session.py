@@ -22,6 +22,8 @@ import threading
 import time
 import uuid
 
+from .claude_errors import SessionDied, TurnTimedOut
+
 DEFAULT_TIMEOUT = 300
 
 
@@ -46,14 +48,6 @@ def close(stream):
             stream.close()
     except Exception:
         pass
-
-
-class SessionDied(RuntimeError):
-    pass
-
-
-class TurnTimedOut(RuntimeError):
-    pass
 
 
 class ClaudeSession:

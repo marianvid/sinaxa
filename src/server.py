@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .app import App
-from .model import ModelError
+from .domain import ModelError
 
 HOST, PORT = "127.0.0.1", 8789
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -1,9 +1,4 @@
-"""Small application facade used by HTTP and tests.
-
-Domain rules stay in model.py, persistence in store.py, provider lifecycle in
-engines/, and conversational work in talk.py. Model calls run outside request
-threads so the interface remains responsive while agents think.
-"""
+"""Application facade and composition root used by HTTP and tests."""
 
 import atexit
 import os
@@ -11,8 +6,8 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from .engines import RuntimeManager, describe
-from .model import CLOSED, CUSTOM, OPEN, ModelError
+from .domain import CLOSED, CUSTOM, OPEN, EngineConfig, ModelError
+from .runtime import RuntimeManager, describe
 from .store import Store
 from .talk import Talk
 
@@ -56,7 +51,6 @@ class App:
             candidate = engine.as_dict()
             candidate.update({key: value for key, value in fields.items()
                               if key in allowed})
-            from .model import EngineConfig
             replacement = EngineConfig.from_dict(candidate)
             self.sinaxa.engines[self.sinaxa.engines.index(engine)] = replacement
             self.store.save_engines(self.sinaxa)

@@ -1,0 +1,13 @@
+from typing import Protocol
+
+
+class Agent(Protocol):
+    """Provider-neutral conversation endpoint used by the application."""
+
+    accepts_images: bool
+    resumed: bool
+
+    def ask(self, text, timeout, images=()): ...
+    def native_id(self): ...
+    def status(self): ...
+    def stop(self): ...

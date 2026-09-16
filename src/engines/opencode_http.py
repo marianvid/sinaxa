@@ -21,13 +21,11 @@ docs/design/03-providers.md. Two of them shape the code below:
     is "the providers answer", never "the port accepts".
 """
 
-import base64
 import json
 import os
 import subprocess
 import threading
 import time
-import urllib.error
 import urllib.request
 
 START_TIMEOUT = 90
@@ -159,169 +157,9 @@ class OpencodeBackend:
         return found
 
     def agent(self, name, model=None, instructions=None):
+        from .opencode_agent import OpencodeAgent
+
         return OpencodeAgent(self, name, model, instructions)
 
 
-MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-         ".gif": "image/gif", ".webp": "image/webp"}
-
-
-def data_uri(path):
-    """One attachment, the only way opencode 1.18.15 actually reads it.
-
-    A path -- bare, or as a file:// uri -- is accepted by the endpoint and
-    then fails inside opencode with "OpenAI Chat media must contain valid
-    base64", which reaches you as an answer that never arrives. A data uri
-    goes through: with one, the image reaches the provider, and a provider
-    that cannot read images says so out loud.
-    """
-    with open(path, "rb") as fh:
-        blob = fh.read()
-    kind = MEDIA.get(os.path.splitext(path)[1].lower(), "image/png")
-    return {"uri": "data:%s;base64,%s" % (kind, base64.b64encode(blob).decode()),
-            "name": os.path.basename(path)}
-
-
-def model_ref(model):
-    """"ai-lab/llama-qwen36-35b" -> {"providerID": ..., "id": ...}"""
-    if not model:
-        return None
-    if isinstance(model, dict):
-        return model
-    provider, _, ident = model.partition("/")
-    if not ident:
-        raise ValueError("a model must be written provider/id, got %r" % model)
-    return {"providerID": provider, "id": ident}
-
-
-class OpencodeAgent:
-    provider = "opencode"
-    accepts_images = True          # as file:// uris; the model decides
-
-    def __init__(self, backend, name, model=None, instructions=None):
-        self.backend = backend
-        self.name = name
-        self.model = model
-        self.instructions = instructions
-        self.session_id = None
-        self.activity = ""
-        self.tokens = 0
-        self.turns = 0
-        self._lock = threading.Lock()
-
-    # ------------------------------------------------------------ helpers
-    def messages(self):
-        answer = self.backend.call("/api/session/%s/message" % self.session_id)
-        return answer.get("data") if isinstance(answer, dict) else (answer or [])
-
-    @staticmethod
-    def text_of(message):
-        """Assistant text lives in content[]; the user's is a bare field."""
-        parts = [block.get("text", "") for block in message.get("content", [])
-                 if block.get("type") == "text"]
-        return " ".join(p for p in parts if p).strip() or message.get("text", "")
-
-    @staticmethod
-    def total_tokens(message):
-        counts = message.get("tokens") or {}
-        cache = counts.get("cache") or {}
-        return (counts.get("input", 0) + counts.get("output", 0)
-                + counts.get("reasoning", 0) + cache.get("read", 0)
-                + cache.get("write", 0))
-
-    def _ensure_session(self):
-        if self.session_id:
-            return
-        payload = {}
-        reference = model_ref(self.model)
-        if reference:
-            payload["model"] = reference
-        created = self.backend.call("/api/session", payload)
-        created = created.get("data") or created
-        self.session_id = created["id"]
-
-    def resume(self, session_id):
-        """Adopt a session left behind by an earlier run, or by a restart."""
-        self.backend.start()
-        self.session_id = session_id
-        try:
-            self.messages()
-        except (urllib.error.HTTPError, urllib.error.URLError, KeyError):
-            self.session_id = None
-            return False
-        return True
-
-    def compact(self):
-        """opencode's own context-clear. The room's transcript is untouched."""
-        if not self.session_id:
-            return False
-        self.backend.call("/api/session/%s/compact" % self.session_id, {})
-        return True
-
-    # ---------------------------------------------------------- one turn
-    def ask(self, text, timeout=TURN_TIMEOUT, images=()):
-        """`images` are paths, attached as file:// uris. Whether they are
-        read at all is the model's business, not opencode's -- a model
-        without vision answers as if nothing were attached."""
-        with self._lock:
-            started = time.time()
-            self.activity = "starting"
-            try:
-                self.backend.start()
-                self._ensure_session()
-            except Exception as exc:
-                self.activity = ""
-                return None, {"error": str(exc)[:400]}
-
-            prompt = text
-            if self.instructions and self.turns == 0:
-                prompt = self.instructions + "\n\n---\n\n" + text
-
-            before = len(self.messages())
-            payload = {"text": prompt}
-            if images:
-                payload["files"] = [data_uri(path) for path in images]
-            try:
-                self.backend.call("/api/session/%s/prompt" % self.session_id,
-                                  {"prompt": payload}, timeout=60)
-            except urllib.error.HTTPError as exc:
-                self.activity = ""
-                return None, {"error": "prompt refused: %s" % exc}
-
-            self.activity = "thinking"
-            answer = self._await_answer(before, timeout)
-            self.activity = ""
-            if answer is None:
-                return None, {"error": (
-                    "no answer in %ds. opencode fails a turn silently when the "
-                    "model is not declared in its config -- check %s"
-                    % (timeout, self.model or "the default model"))}
-
-            self.turns += 1
-            self.tokens += self.total_tokens(answer)
-            return self.text_of(answer) or "(empty answer)", {
-                "elapsed": round(time.time() - started, 1),
-                "tokens": self.tokens or None}
-
-    def _await_answer(self, before, timeout):
-        """A turn is over when the newest message is a finished assistant one."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            time.sleep(self.backend.poll)
-            seen = self.messages()
-            if len(seen) > before and seen[0].get("type") == "assistant" \
-                    and seen[0].get("finish"):
-                return seen[0]
-        return None
-
-    # ------------------------------------------------------------ status
-    def status(self):
-        return {"provider": self.provider, "model": self.model or "default",
-                "conversation": (self.session_id or "")[:12],
-                "activity": self.activity, "turns": self.turns,
-                "tokens": self.tokens, "alive": self.backend.alive,
-                "pids": self.backend.pids, "shared_process": True}
-
-    def stop(self):
-        """The session stays on disk; only our handle on it goes."""
-        self.session_id = None
+from .opencode_agent import (OpencodeAgent, data_uri, model_ref)  # compatibility

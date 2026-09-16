@@ -4,7 +4,8 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-from .model import ModelError
+from .conversation import Conversation
+from .domain import ModelError
 
 PREAMBLE = """You are {name}, occupying the {role} seat in project {project}.
 This conversation is the session {session}. The human lead is {lead}.
@@ -21,14 +22,6 @@ lead asks for a detailed artifact.
 
 Seat instructions:
 {prompt}"""
-
-
-class Conversation:
-    def __init__(self, seat_id):
-        self.seat_id = seat_id
-        self.agent = None
-        self.delivered = 0
-        self.trouble = None
 
 
 class Talk:
