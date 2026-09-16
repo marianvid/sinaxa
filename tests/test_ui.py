@@ -85,12 +85,14 @@ def test_projects_owns_seats_sessions_search_and_attachments():
         assert marker in html
 
 
-def test_projects_exposes_clear_session_action():
+def test_projects_exposes_non_destructive_clear_context_action():
     ui = Path(__file__).parents[1] / "ui"
-    assert 'id="clearSession"' in (ui / "projects.html").read_text()
+    html = (ui / "projects.html").read_text()
     script = (ui / "projects.js").read_text()
-    assert "/history" in script
-    assert "All messages and attachments" in script
+    assert 'id="clearContext"' in html
+    assert 'id="clearSession"' not in html
+    assert "/context" in script
+    assert "/history" not in script
 
 
 def test_projects_exposes_hierarchical_project_navigation_and_overview():
@@ -99,5 +101,14 @@ def test_projects_exposes_hierarchical_project_navigation_and_overview():
     script = (ui / "projects.js").read_text()
     assert 'id="projectOverview"' in html
     assert 'id="openMain"' in html
-    assert "Direct sessions" in script
+    assert "Direct sessions" not in script
+    assert 'class="roster-line' in script
+    assert 'data-open-session' in script
     assert "Main team" in html
+
+
+def test_projects_loads_transcript_history_progressively():
+    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    assert "loadOlder" in script
+    assert "before:String(transcript[0].seq)" in script
+    assert "Scroll up to load earlier messages" in script

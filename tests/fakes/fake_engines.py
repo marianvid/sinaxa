@@ -30,6 +30,8 @@ class FakeAgent:
             answer = answer(text)
         if isinstance(answer, Exception):
             return None, {"error": str(answer)}
+        if isinstance(answer, tuple):
+            return answer
         return answer, {"elapsed": 0.0, "tokens": 10 * self.turns}
 
     def status(self):

@@ -225,6 +225,7 @@ class ClaudeSession:
     def _await_result(self, timeout):
         deadline = time.time() + timeout
         chunks = []
+        compaction = None
         while True:
             left = deadline - time.time()
             if left <= 0:
@@ -243,6 +244,13 @@ class ClaudeSession:
                                   + (self.stderr_tail() or ""))
             if kind == "system" and event.get("session_id"):
                 self.session_id = event["session_id"]
+            if kind == "system" and event.get("subtype") == "compact_boundary":
+                raw = (event.get("compact_metadata") or
+                       event.get("compactMetadata") or {})
+                compaction = {
+                    "trigger": raw.get("trigger"),
+                    "pre_tokens": (raw.get("pre_tokens") or
+                                   raw.get("preTokens"))}
             if kind == "system":
                 self.activity = "thinking"
             if kind == "assistant":
@@ -266,4 +274,7 @@ class ClaudeSession:
                     meta["cost"] = round(float(event["total_cost_usd"]), 4)
                 if event.get("is_error"):
                     meta["error"] = "claude reported an error"
+                if compaction is not None:
+                    meta["compacted"] = True
+                    meta["compaction"] = compaction
                 return answer, meta

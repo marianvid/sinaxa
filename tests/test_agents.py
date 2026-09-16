@@ -109,6 +109,12 @@ class Claude(FakeBinary):
         s.ask("hello")
         self.assertEqual(s.tokens, 115)
 
+    def test_compaction_boundary_is_exposed_in_turn_metadata(self):
+        _, meta = self.session().ask("COMPACT now")
+        self.assertTrue(meta["compacted"])
+        self.assertEqual(meta["compaction"]["trigger"], "auto")
+        self.assertEqual(meta["compaction"]["pre_tokens"], 9876)
+
     def test_one_process_serves_every_turn_and_keeps_the_context(self):
         s = self.session()
         s.ask("first")
@@ -208,6 +214,11 @@ class Codex(FakeBinary):
         self.assertIn("turn 1 on th-1", answer)
         self.assertNotIn("IGNORED", answer,
                          "item/completed must not be appended after deltas")
+
+    def test_context_compaction_item_is_exposed_in_turn_metadata(self):
+        _, meta = self.backend().agent("codex").ask("COMPACT now")
+        self.assertTrue(meta["compacted"])
+        self.assertEqual(meta["compaction"]["trigger"], "auto")
 
     def test_a_provider_that_sends_no_deltas_still_yields_an_answer(self):
         a = self.backend().agent("codex")

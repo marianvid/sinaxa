@@ -172,9 +172,12 @@ class CodexMcpAgent:
         self.tokens = 0
         self.turns = 0
         self._lock = threading.Lock()
+        self._compaction = None
 
     def _on_event(self, ev):
         kind = ev.get("type") or ""
+        if "compact" in kind.replace("_", "").lower():
+            self._compaction = {"trigger": ev.get("trigger") or "auto"}
         if kind == "task_started":
             self.activity = "thinking"
         elif kind == "item_started":
@@ -190,6 +193,7 @@ class CodexMcpAgent:
 
     def ask(self, text, timeout=TURN_TIMEOUT):
         with self._lock:
+            self._compaction = None
             self.backend.start()
             started = time.time()
             self.activity = "starting"
@@ -220,9 +224,13 @@ class CodexMcpAgent:
             self.activity = ""
             self.turns += 1
             answer = _text_of(reply.get("result") or {})
-            return answer or "(empty answer)", {
+            meta = {
                 "elapsed": round(time.time() - started, 1),
                 "tokens": self.tokens or None}
+            if self._compaction is not None:
+                meta["compacted"] = True
+                meta["compaction"] = self._compaction
+            return answer or "(empty answer)", meta
 
     def status(self):
         return {"provider": self.provider, "model": self.model or "default",

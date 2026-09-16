@@ -91,7 +91,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             q = self.query
             return self.guarded(lambda: self.app.state(
-                q.get("project"), q.get("session"), q.get("search")))
+                q.get("project"), q.get("session"), q.get("search"),
+                q.get("before"), q.get("limit", 60)))
         if path == "/api/models":
             q = self.query
             return self.guarded(lambda: {"models": self.app.models_for(

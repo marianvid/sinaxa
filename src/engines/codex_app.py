@@ -191,6 +191,7 @@ class CodexAppAgent:
         self._done = threading.Event()
         self._error = None
         self._lock = threading.Lock()
+        self._compaction = None
 
     # ------------------------------------------------------- event sink
     def _on_event(self, method, params):
@@ -210,9 +211,15 @@ class CodexAppAgent:
         elif "turn/started" in low or "turnstarted" in low:
             self.activity = "thinking"
         elif "item/started" in low:
-            self.activity = "working"
+            item = params.get("item") or {}
+            item_type = str(item.get("type", "")).replace("_", "").lower()
+            self.activity = ("compacting" if item_type == "contextcompaction"
+                             else "working")
         elif "item/completed" in low:
             item = params.get("item") or {}
+            item_type = str(item.get("type", "")).replace("_", "").lower()
+            if item_type == "contextcompaction":
+                self._compaction = {"trigger": item.get("trigger") or "auto"}
             if item.get("type") in ("agentMessage", "agent_message") and item.get("text") \
                     and not self._chunks:
                 self._chunks.append(item["text"])
@@ -258,7 +265,7 @@ class CodexAppAgent:
             self.backend.start()
             started = time.time()
             self.activity = "starting"
-            self._chunks, self._error = [], None
+            self._chunks, self._error, self._compaction = [], None, None
             self._done.clear()
             try:
                 self._ensure_thread(timeout)
@@ -290,9 +297,13 @@ class CodexAppAgent:
             if self._error:
                 return None, {"error": self._error}
             answer = "".join(self._chunks).strip()
-            return answer or "(empty answer)", {
+            meta = {
                 "elapsed": round(time.time() - started, 1),
                 "tokens": self.tokens or None}
+            if self._compaction is not None:
+                meta["compacted"] = True
+                meta["compaction"] = self._compaction
+            return answer or "(empty answer)", meta
 
     def status(self):
         return {"provider": self.provider, "model": self.model or "default",

@@ -30,7 +30,6 @@
     <div hidden aria-hidden="true">
       <div class="title"><span class="proj" id="projectTitle">Projects</span><span class="dot">/</span><span class="sess" id="sessionTitle">Select a project</span><span class="sub" id="projectState"></span></div>
       <div class="seatbar" id="participants"></div>
-      <button class="chip" id="clearContext">Clear context</button>
       <button class="chip icon" id="sessionMenu" aria-label="Session options">•••</button>
       <button id="newSessionSmall" type="button">New session</button>
     </div>
@@ -47,7 +46,7 @@
       <section class="overview-section custom-sessions"><div class="overview-section-title"><div><h2>Custom sessions</h2><p>Focused conversations with a selected group of seats.</p></div></div><div id="sessions" class="overview-sessions"></div></section>
     </section>
     <section id="conversationView" class="conversation-view" hidden>
-      <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"><span class="search-divider" aria-hidden="true"></span><button id="clearSession" class="search-action" type="button" title="Clear session" aria-label="Clear session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path></svg><span>Clear session</span></button></div>
+      <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"><span class="search-divider" aria-hidden="true"></span><button id="clearContext" class="search-action" type="button" title="Start with a fresh context while keeping the visible history" aria-label="Clear context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg><span>Clear context</span></button></div>
       <div id="messages" class="thread"></div>
       <div id="composer" class="composer"><div class="cbox">
         <div id="attachments" class="pasted"></div>
@@ -58,14 +57,4 @@
   </section>
 </div>
 <dialog id="dialog"><form method="dialog"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button class="primary" id="dialogSave" value="default">Save</button></p></form></dialog>
-<dialog id="confirmDialog" class="confirm-dialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage confirmNote">
-  <form method="dialog">
-    <div class="confirm-heading">
-      <span class="confirm-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path></svg></span>
-      <div><h2 id="confirmTitle"></h2><p id="confirmMessage"></p></div>
-    </div>
-    <p id="confirmNote" class="confirm-note"></p>
-    <p class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button class="danger-action" id="confirmAccept" value="confirm">Clear session</button></p>
-  </form>
-</dialog>
 <script src="/base.js"></script><script src="/projects.js"></script></body></html>

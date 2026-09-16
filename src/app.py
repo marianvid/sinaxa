@@ -343,7 +343,8 @@ class App:
                 "error": str(future.exception()) if future.done() and future.exception() else None}
 
     # read model ----------------------------------------------------------
-    def state(self, project_id=None, session_id=None, search=None):
+    def state(self, project_id=None, session_id=None, search=None,
+              before=None, limit=60):
         projects = []
         for project in self.sinaxa.projects:
             projects.append({"id": project.id, "name": project.name,
@@ -365,17 +366,17 @@ class App:
             return out
         project = self.sinaxa.project(project_id) if project_id else self.sinaxa.projects[0]
         session = project.session(session_id) if session_id else project.team_session
-        messages = self.store.messages(project, session)
-        if search:
-            wanted = search.casefold()
-            messages = [m for m in messages if wanted in m.get("text", "").casefold()]
+        page = self.store.message_page(project, session, before=before,
+                                       limit=limit, search=search)
         talk = self._talks.get((project.id, session.id))
         out.update({"project": project.id, "session": session.id,
                     "seats": [dict(seat.as_dict(),
                        name=self.sinaxa.seat_name(project, seat),
                        trouble=self.sinaxa.seat_trouble(project, seat))
                        for seat in project.seats],
-                    "messages": messages,
+                    "messages": page["messages"],
+                    "message_page": {key: value for key, value in page.items()
+                                     if key != "messages"},
                     "status": talk.status() if talk else {
                         "busy": [], "agents": [],
                         "engines": self.runtimes.status(project.id)}})

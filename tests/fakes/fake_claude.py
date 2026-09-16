@@ -60,6 +60,9 @@ for line in sys.stdin:
         continue
 
     emit({"type": "system", "subtype": "init", "session_id": SESSION})
+    if "COMPACT" in text:
+        emit({"type": "system", "subtype": "compact_boundary",
+              "compact_metadata": {"trigger": "auto", "pre_tokens": 9876}})
     answer = "turn %d, you said %r, first was %r" % (len(seen), text, seen[0])
     emit({"type": "assistant",
           "message": {"content": [{"type": "text", "text": answer}]}})

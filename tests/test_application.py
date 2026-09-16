@@ -62,6 +62,26 @@ def test_clear_context_keeps_history_and_adds_boundary(app):
     messages = app.state(project.id, session.id)["messages"]
     assert any(m.get("kind") == "boundary" for m in messages)
     assert any(m["text"] == "Before" for m in messages)
+    boundary = next(m for m in messages if m.get("kind") == "boundary")
+    assert "remain in the transcript" in boundary["text"]
+
+
+def test_native_compaction_is_visible_but_does_not_clear_team_context(tmp_path):
+    engines = FakeEngines({"Astra": (
+        "after compaction", {"compacted": True,
+                             "compaction": {"trigger": "auto"}}),
+        "Opus": "[NO_REPLY]"})
+    made = App(tmp_path, cwd=str(tmp_path), engines=engines)
+    try:
+        project, _, _ = furnish(made)
+        _, job = made.say(project.id, project.team_session.id, "Long turn")
+        wait(made, job)
+        messages = made.state(project.id, project.team_session.id)["messages"]
+        marker = next(m for m in messages if m.get("kind") == "compaction")
+        assert marker["text"] == "Astra compacted native context (auto)"
+        assert project.team_session.context_start_seq == 0
+    finally:
+        made.stop()
 
 
 def test_clear_session_removes_history_but_keeps_configuration(app):

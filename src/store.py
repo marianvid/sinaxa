@@ -12,6 +12,7 @@ import re
 import shutil
 import tempfile
 import threading
+from collections import deque
 
 from .model import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
                     Sinaxa)
@@ -214,6 +215,39 @@ class Store:
                 return []
             with open(path, encoding="utf-8") as stream:
                 return [json.loads(line) for line in stream if line.strip()]
+
+    def message_page(self, project, session, before=None, limit=60,
+                     search=None):
+        """Return one ascending page ending just before ``before``.
+
+        The file is scanned without materialising the whole transcript. The
+        browser receives only the recent window it asked for.
+        """
+        path = self.transcript_path(project, session)
+        limit = max(1, min(int(limit), 200))
+        before = int(before) if before is not None else None
+        wanted = search.casefold() if search else None
+        found = deque(maxlen=limit + 1)
+        with self._lock:
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as stream:
+                    for line in stream:
+                        if not line.strip():
+                            continue
+                        message = json.loads(line)
+                        if before is not None and message.get("seq", 0) >= before:
+                            continue
+                        if wanted and wanted not in message.get(
+                                "text", "").casefold():
+                            continue
+                        found.append(message)
+        has_more = len(found) > limit
+        if has_more:
+            found.popleft()
+        messages = list(found)
+        return {"messages": messages, "has_more": has_more,
+                "oldest_seq": messages[0].get("seq") if messages else None,
+                "limit": limit}
 
     def clear_history(self, project, session):
         path = self.transcript_path(project, session)

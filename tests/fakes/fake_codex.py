@@ -45,6 +45,13 @@ def turn(tid, prompt):
     if "SLOW" in prompt:
         return
 
+    if "COMPACT" in prompt:
+        event("item/started", {"threadId": tid,
+                               "item": {"type": "contextCompaction"}})
+        event("item/completed", {"threadId": tid,
+                                 "item": {"type": "contextCompaction",
+                                          "trigger": "auto"}})
+
     answer = "turn %d on %s: %s" % (threads[tid], tid, prompt[:40])
     if "NODELTA" in prompt:
         event("item/completed", {"threadId": tid,

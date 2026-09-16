@@ -100,7 +100,10 @@ class Talk:
             self.store.clear_checkpoints(self.project, self.session)
             self.session.context_start_seq = self.session.seq + 1
             self.store.save_project(self.project)
-            return self.post("Context cleared", author="system", kind="boundary")
+            return self.post(
+                "Context cleared — earlier messages remain in the transcript "
+                "but are no longer sent to agents.",
+                author="system", kind="boundary")
 
     def line(self, message, carried=True):
         count = len(message.get("images", []))
@@ -118,7 +121,7 @@ class Talk:
         return [message for message in self.store.messages(self.project, self.session)
                 if self.session.context_start_seq <= message.get("seq", 0) <= through
                 and message.get("seq", 0) > conversation.delivered
-                and message.get("kind") != "boundary"]
+                and message.get("kind") not in ("boundary", "compaction")]
 
     def deliver(self, seat, message, required=False):
         agent = self.start(seat)
@@ -240,6 +243,17 @@ class Talk:
                             continue
                         if answer.strip().upper() in {"NO_REPLY", "[NO_REPLY]"}:
                             continue
+                        if meta.get("compacted"):
+                            details = meta.get("compaction") or {}
+                            trigger = details.get("trigger")
+                            suffix = " (%s)" % trigger if trigger else ""
+                            self.post("%s compacted native context%s" %
+                                      (name, suffix), author="system",
+                                      kind="compaction",
+                                      meta={"seat": seat.id,
+                                            "engine": self.sinaxa.member(
+                                                seat.occupant).engine,
+                                            "compaction": details})
                         reply = self.post(answer, author=seat.id,
                                           author_name=name, meta=meta)
                         mentioned = self.sinaxa.mentioned(

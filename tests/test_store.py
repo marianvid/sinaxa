@@ -32,6 +32,39 @@ def test_transcript_checkpoint_storage_and_clear(tmp_path):
     assert store.messages(project, session) == []
 
 
+def test_transcript_pages_return_recent_messages_then_older_windows(tmp_path):
+    store = Store(tmp_path)
+    state = Sinaxa(engines=[EngineConfig("claude", "claude")])
+    project = state.add_project("P")
+    session = project.team_session
+    for seq in range(1, 151):
+        store.append(project, session, {"seq": seq, "text": "message %d" % seq})
+
+    latest = store.message_page(project, session, limit=60)
+    older = store.message_page(
+        project, session, before=latest["oldest_seq"], limit=60)
+    oldest = store.message_page(
+        project, session, before=older["oldest_seq"], limit=60)
+
+    assert [m["seq"] for m in latest["messages"]] == list(range(91, 151))
+    assert [m["seq"] for m in older["messages"]] == list(range(31, 91))
+    assert [m["seq"] for m in oldest["messages"]] == list(range(1, 31))
+    assert latest["has_more"] and older["has_more"]
+    assert not oldest["has_more"]
+
+
+def test_transcript_search_is_filtered_before_it_is_paged(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    session = project.team_session
+    for seq in range(1, 21):
+        text = "match" if seq % 2 == 0 else "other"
+        store.append(project, session, {"seq": seq, "text": text})
+    page = store.message_page(project, session, limit=4, search="MATCH")
+    assert [m["seq"] for m in page["messages"]] == [14, 16, 18, 20]
+    assert page["has_more"]
+
+
 def test_erasing_is_scoped_to_sinaxa_project(tmp_path):
     outside = tmp_path / "keep.txt"
     outside.write_text("safe")
