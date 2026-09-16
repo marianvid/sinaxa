@@ -95,24 +95,71 @@ class Member:
         return cls(**raw)
 
 
+class SeatTemplate:
+    """A reusable role definition which can seed project seats."""
+
+    def __init__(self, role, prompt, category="general", default_agent=None,
+                 id=None):
+        if not (role or "").strip():
+            raise ModelError("a seat template needs a role")
+        if not (prompt or "").strip():
+            raise ModelError("a seat template needs a prompt")
+        self.id = id or new_id("stp")
+        self.role = role.strip()
+        self.prompt = prompt.strip()
+        self.category = (category or "general").strip()
+        self.default_agent = default_agent or None
+
+    def as_dict(self):
+        return {"id": self.id, "role": self.role, "prompt": self.prompt,
+                "category": self.category,
+                "default_agent": self.default_agent}
+
+    @classmethod
+    def from_dict(cls, raw):
+        return cls(**raw)
+
+
+class ProjectType:
+    """A project recipe made from an ordered set of seat templates."""
+
+    def __init__(self, name, category="general", description="",
+                 seat_templates=None, id=None):
+        if not (name or "").strip():
+            raise ModelError("a project type needs a name")
+        self.id = id or new_id("typ")
+        self.name = name.strip()
+        self.category = (category or "general").strip()
+        self.description = (description or "").strip()
+        self.seat_templates = list(dict.fromkeys(seat_templates or []))
+
+    def as_dict(self):
+        return {"id": self.id, "name": self.name,
+                "category": self.category, "description": self.description,
+                "seat_templates": self.seat_templates}
+
+    @classmethod
+    def from_dict(cls, raw):
+        return cls(**raw)
+
+
 class Seat:
     """A project role occupied by a member."""
 
-    def __init__(self, role, prompt, occupant, id=None):
+    def __init__(self, role, prompt, occupant=None, id=None, template_id=None):
         if not (role or "").strip():
             raise ModelError("a seat needs a role")
         if not (prompt or "").strip():
             raise ModelError("a seat needs a prompt")
-        if not occupant:
-            raise ModelError("a seat needs an occupant")
         self.id = id or new_id("seat")
         self.role = role.strip()
         self.prompt = prompt
-        self.occupant = occupant
+        self.occupant = occupant or None
+        self.template_id = template_id or None
 
     def as_dict(self):
         return {"id": self.id, "role": self.role, "prompt": self.prompt,
-                "occupant": self.occupant}
+                "occupant": self.occupant, "template_id": self.template_id}
 
     @classmethod
     def from_dict(cls, raw):
@@ -159,7 +206,7 @@ class Project:
     """A restorable team, its working folder and independent sessions."""
 
     def __init__(self, name, id=None, cwd=None, state=OPEN, seats=None,
-                 sessions=None):
+                 sessions=None, type_id=None):
         if not (name or "").strip():
             raise ModelError("a project needs a name")
         if state not in (OPEN, CLOSED):
@@ -168,6 +215,7 @@ class Project:
         self.name = name.strip()
         self.cwd = cwd
         self.state = state
+        self.type_id = type_id or None
         self.seats = list(seats or [])
         self.sessions = list(sessions or [])
         if not any(s.kind == TEAM for s in self.sessions):
@@ -197,10 +245,10 @@ class Project:
         return next((s for s in self.sessions
                      if s.kind == DIRECT and s.participants == [seat_id]), None)
 
-    def add_seat(self, role, prompt, occupant):
+    def add_seat(self, role, prompt, occupant=None, template_id=None):
         if any(s.role.casefold() == role.strip().casefold() for s in self.seats):
             raise ModelError("that role already exists in this project")
-        seat = Seat(role, prompt, occupant)
+        seat = Seat(role, prompt, occupant, template_id=template_id)
         self.seats.append(seat)
         self.team_session.participants.append(seat.id)
         self.sessions.append(Session(role, [seat.id], DIRECT,
@@ -237,7 +285,7 @@ class Project:
 
     def as_dict(self):
         return {"id": self.id, "name": self.name, "cwd": self.cwd,
-                "state": self.state,
+                "state": self.state, "type_id": self.type_id,
                 "seats": [seat.as_dict() for seat in self.seats],
                 "sessions": [session.as_dict() for session in self.sessions]}
 
@@ -253,10 +301,13 @@ class Project:
 class Sinaxa:
     """Workspace aggregate and cross-project invariants."""
 
-    def __init__(self, engines=None, members=None, projects=None):
+    def __init__(self, engines=None, members=None, projects=None,
+                 seat_templates=None, project_types=None):
         self.engines = list(engines or [])
         self.members = list(members or [])
         self.projects = list(projects or [])
+        self.seat_templates = list(seat_templates or [])
+        self.project_types = list(project_types or [])
 
     def engine(self, engine_id):
         for engine in self.engines:
@@ -275,6 +326,18 @@ class Sinaxa:
             if project.id == project_id:
                 return project
         raise ModelError("no such project")
+
+    def seat_template(self, template_id):
+        for template in self.seat_templates:
+            if template.id == template_id:
+                return template
+        raise ModelError("no such seat template")
+
+    def project_type(self, type_id):
+        for project_type in self.project_types:
+            if project_type.id == type_id:
+                return project_type
+        raise ModelError("no such project type")
 
     @property
     def lead(self):
@@ -321,16 +384,101 @@ class Sinaxa:
             raise ModelError("the human lead cannot be removed")
         if any(seat.occupant == member_id for p in self.projects for seat in p.seats):
             raise ModelError("that member still occupies a seat")
+        if any(template.default_agent == member_id
+               for template in self.seat_templates):
+            raise ModelError("that member is still a default agent for a seat template")
         self.members.remove(member)
         return member
 
-    def add_project(self, name, cwd=None):
+    def add_project(self, name, cwd=None, type_id=None):
         if any(p.name.casefold() == name.strip().casefold()
                for p in self.projects):
             raise ModelError("a project with that name already exists")
-        project = Project(name, cwd=cwd)
+        project_type = self.project_type(type_id) if type_id else None
+        project = Project(name, cwd=cwd, type_id=type_id)
+        if project_type:
+            for template_id in project_type.seat_templates:
+                template = self.seat_template(template_id)
+                project.add_seat(template.role, template.prompt,
+                                 template.default_agent,
+                                 template_id=template.id)
         self.projects.append(project)
         return project
+
+    def add_seat_template(self, **fields):
+        role = fields.get("role", "")
+        if any(t.role.casefold() == role.strip().casefold()
+               for t in self.seat_templates):
+            raise ModelError("seat template roles must be unique")
+        self._validate_default_agent(fields.get("default_agent"))
+        template = SeatTemplate(**fields)
+        self.seat_templates.append(template)
+        return template
+
+    def update_seat_template(self, template_id, **fields):
+        template = self.seat_template(template_id)
+        candidate = template.as_dict()
+        candidate.update({key: value for key, value in fields.items()
+                          if key in {"role", "prompt", "category",
+                                     "default_agent"}})
+        role = (candidate.get("role") or "").strip()
+        if any(t.id != template.id and t.role.casefold() == role.casefold()
+               for t in self.seat_templates):
+            raise ModelError("seat template roles must be unique")
+        self._validate_default_agent(candidate.get("default_agent"))
+        replacement = SeatTemplate.from_dict(candidate)
+        self.seat_templates[self.seat_templates.index(template)] = replacement
+        return replacement
+
+    def remove_seat_template(self, template_id):
+        template = self.seat_template(template_id)
+        if any(template_id in project_type.seat_templates
+               for project_type in self.project_types):
+            raise ModelError("that seat template is still used by a project type")
+        self.seat_templates.remove(template)
+        return template
+
+    def _validate_default_agent(self, member_id):
+        if member_id:
+            member = self.member(member_id)
+            if member.is_human:
+                raise ModelError("a default agent cannot be the human lead")
+
+    def _validate_type_templates(self, template_ids):
+        for template_id in template_ids:
+            self.seat_template(template_id)
+
+    def add_project_type(self, **fields):
+        name = fields.get("name", "")
+        if any(t.name.casefold() == name.strip().casefold()
+               for t in self.project_types):
+            raise ModelError("project type names must be unique")
+        self._validate_type_templates(fields.get("seat_templates", []))
+        project_type = ProjectType(**fields)
+        self.project_types.append(project_type)
+        return project_type
+
+    def update_project_type(self, type_id, **fields):
+        project_type = self.project_type(type_id)
+        candidate = project_type.as_dict()
+        candidate.update({key: value for key, value in fields.items()
+                          if key in {"name", "category", "description",
+                                     "seat_templates"}})
+        name = (candidate.get("name") or "").strip()
+        if any(t.id != project_type.id and t.name.casefold() == name.casefold()
+               for t in self.project_types):
+            raise ModelError("project type names must be unique")
+        self._validate_type_templates(candidate.get("seat_templates", []))
+        replacement = ProjectType.from_dict(candidate)
+        self.project_types[self.project_types.index(project_type)] = replacement
+        return replacement
+
+    def remove_project_type(self, type_id):
+        project_type = self.project_type(type_id)
+        if any(project.type_id == type_id for project in self.projects):
+            raise ModelError("that project type is still used by a project")
+        self.project_types.remove(project_type)
+        return project_type
 
     def remove_project(self, project_id):
         project = self.project(project_id)
@@ -338,9 +486,11 @@ class Sinaxa:
         return project
 
     def seat_name(self, project, seat):
-        return self.member(seat.occupant).name
+        return self.member(seat.occupant).name if seat.occupant else "Unassigned"
 
     def seat_trouble(self, project, seat):
+        if not seat.occupant:
+            return "this seat has no agent"
         try:
             member = self.member(seat.occupant)
             engine = self.engine(member.engine)
@@ -351,6 +501,8 @@ class Sinaxa:
     def mentioned(self, project, text, seats):
         found = []
         for seat in seats:
+            if not seat.occupant:
+                continue
             member = self.member(seat.occupant)
             if any(re.search(r"(?<![\w@])@%s\b" % re.escape(name), text,
                              re.IGNORECASE)

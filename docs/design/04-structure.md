@@ -17,9 +17,10 @@ propagation. `engines/` owns processes and project isolation. `server.py` only
 parses/serializes requests. Long turns run in an executor, outside HTTP request
 threads, and return an accepted job immediately.
 
-The web UI is physically split into Projects, Members, Engines and Settings;
-each page owns its HTML, CSS and JavaScript. Project selection renders seats by
-default and offers managed direct/team sessions plus user-created sessions.
+The web UI is physically split into Chats, Agents, Seat Templates, Project
+Types, Engines and Settings; each page owns its HTML, CSS and JavaScript.
+Project selection renders concrete seats and offers managed direct/team
+sessions plus user-created sessions.
 
 ## Disk layout
 
@@ -28,6 +29,8 @@ state/
 ├── meta.json
 ├── engines.json
 ├── members.json
+├── seat_templates.json
+├── project_types.json
 └── projects/<project-id>/
     ├── project.json
     └── sessions/<session-id>/

@@ -11,6 +11,7 @@
       <a class="nb" href="/projects.html"><i aria-hidden="true">▤</i><span>Chats</span></a>
       <a class="nb" href="/members.html"><i aria-hidden="true">◉</i><span>Agents</span></a>
       <a class="nb on" href="/seats.html"><i aria-hidden="true">▦</i><span>Seats</span></a>
+      <a class="nb" href="/types.html"><i aria-hidden="true">◇</i><span>Types</span></a>
       <a class="nb" href="/engines.html"><i aria-hidden="true">⌘</i><span>Engines</span></a>
     </nav>
     <div class="global-actions">
@@ -24,9 +25,10 @@
     <div class="scroll"><div class="projects" data-project-list></div></div>
   </aside>
   <main class="main"><section class="view">
-    <h3>Seats</h3>
-    <div class="lead">Project-specific roles occupied by agents. Seat management will be connected to the selected project later.</div>
+    <div class="bar"><div><h3>Seat templates</h3>
+    <div class="lead">Reusable roles and instructions. Project types choose which templates are copied into a new project.</div></div><div class="grow"></div><button class="chip primary" id="add">+ Seat template</button></div>
     <div class="rows" id="list"></div>
   </section></main>
 </div>
+<dialog id="dialog"><form method="dialog"><h2 id="title"></h2><div id="fields"></div><footer><button value="cancel" formnovalidate>Cancel</button><button class="primary" value="default">Save</button></footer></form></dialog>
 <script src="/base.js"></script><script src="/seats.js"></script></body></html>

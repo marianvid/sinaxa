@@ -62,3 +62,33 @@ def test_project_state_and_unique_names_are_domain_rules():
     assert not project.is_open
     with pytest.raises(ModelError):
         state.add_project("sinaxa")
+
+
+def test_project_type_creates_unassigned_project_seats_from_templates():
+    state, _, one, _ = furnished()
+    architect = state.add_seat_template(
+        role="Software architect", prompt="Shape the architecture",
+        category="software", default_agent=one.id)
+    developer = state.add_seat_template(
+        role="Developer", prompt="Build it", category="software")
+    recipe = state.add_project_type(
+        name="Software product", category="software",
+        seat_templates=[architect.id, developer.id])
+
+    project = state.add_project("Generated", type_id=recipe.id)
+
+    assert project.type_id == recipe.id
+    assert [seat.role for seat in project.seats] == [
+        "Software architect", "Developer"]
+    assert project.seats[0].occupant == one.id
+    assert project.seats[1].occupant is None
+    assert state.seat_trouble(project, project.seats[1]) == \
+        "this seat has no agent"
+
+
+def test_templates_in_use_cannot_be_removed():
+    state, _, _, _ = furnished()
+    template = state.add_seat_template(role="Writer", prompt="Write")
+    state.add_project_type(name="Story", seat_templates=[template.id])
+    with pytest.raises(ModelError, match="still used"):
+        state.remove_seat_template(template.id)

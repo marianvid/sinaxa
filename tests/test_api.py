@@ -33,10 +33,19 @@ def test_http_crud_and_fast_turn_acceptance(tmp_path):
         assert call(base, "GET", "/api/state")[0] == 200
         _, lead = call(base, "POST", "/api/members", {"name": "Marian", "kind": "human"})
         _, agent = call(base, "POST", "/api/members", {"name": "Astra", "engine": "claude"})
-        _, project = call(base, "POST", "/api/projects", {"name": "Sinaxa"})
+        _, template = call(base, "POST", "/api/seat-templates", {
+            "role": "API reviewer", "prompt": "Review API changes",
+            "category": "software", "default_agent": agent["member"]["id"]})
+        _, project_type = call(base, "POST", "/api/project-types", {
+            "name": "API product", "category": "software",
+            "description": "Test recipe",
+            "seat_templates": [template["seat_template"]["id"]]})
+        _, project = call(base, "POST", "/api/projects", {
+            "name": "Sinaxa", "type_id": project_type["project_type"]["id"]})
         _, seat = call(base, "POST", "/api/seats", {"project": project["project"]["id"], "role": "Architect", "prompt": "Design", "occupant": agent["member"]["id"]})
         state = call(base, "GET", "/api/state?project=" + project["project"]["id"])[1]
-        assert state["seats"][0]["role"] == "Architect"
+        assert [item["role"] for item in state["seats"]] == [
+            "API reviewer", "Architect"]
         team = next(s for s in state["projects"][0]["sessions"] if s["kind"] == "team")
         status, accepted = call(base, "POST", "/api/say", {"project": project["project"]["id"], "session": team["id"], "text": "hello"})
         assert status == 200 and accepted["accepted"]

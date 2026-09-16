@@ -13,9 +13,10 @@ import shutil
 import tempfile
 import threading
 
-from .model import EngineConfig, Member, Project, Sinaxa
+from .model import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
+                    Sinaxa)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 REMOVED = ".removed"
 IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{2,5}$")
 
@@ -30,6 +31,12 @@ class Store:
         engines = [EngineConfig.from_dict(one) for one in
                    self._read("engines.json", self.default_engines())]
         members = [Member.from_dict(one) for one in self._read("members.json", [])]
+        seat_templates = [SeatTemplate.from_dict(one) for one in
+                          self._read("seat_templates.json",
+                                     self.default_seat_templates())]
+        project_types = [ProjectType.from_dict(one) for one in
+                         self._read("project_types.json",
+                                    self.default_project_types())]
         projects = []
         if os.path.isdir(self.projects_dir):
             for project_id in sorted(os.listdir(self.projects_dir)):
@@ -39,7 +46,9 @@ class Store:
                                               "project.json"))
                 if raw:
                     projects.append(Project.from_dict(raw))
-        return Sinaxa(engines=engines, members=members, projects=projects)
+        return Sinaxa(engines=engines, members=members, projects=projects,
+                      seat_templates=seat_templates,
+                      project_types=project_types)
 
     @staticmethod
     def default_engines():
@@ -56,6 +65,49 @@ class Store:
              "enabled": True, "executable": "opencode", "mode": "persistent",
              "streaming": True, "max_concurrency": 4, "mcp_servers": [],
              "options": {"base_port": 4096}},
+        ]
+
+    @staticmethod
+    def default_seat_templates():
+        return [
+            {"id": "seat_architect", "role": "Architect",
+             "category": "software",
+             "prompt": "Shape the system design, boundaries and technical decisions.",
+             "default_agent": None},
+            {"id": "seat_developer", "role": "Developer",
+             "category": "software",
+             "prompt": "Implement scoped changes and keep the code maintainable.",
+             "default_agent": None},
+            {"id": "seat_tester", "role": "Tester",
+             "category": "software",
+             "prompt": "Verify behavior, expose risks and report reproducible failures.",
+             "default_agent": None},
+            {"id": "seat_researcher", "role": "Researcher",
+             "category": "general",
+             "prompt": "Gather evidence, compare sources and make uncertainty explicit.",
+             "default_agent": None},
+            {"id": "seat_writer", "role": "Writer",
+             "category": "creative",
+             "prompt": "Develop clear, engaging prose consistent with the project voice.",
+             "default_agent": None},
+            {"id": "seat_editor", "role": "Editor",
+             "category": "editorial",
+             "prompt": "Improve structure, accuracy, clarity and consistency.",
+             "default_agent": None},
+        ]
+
+    @staticmethod
+    def default_project_types():
+        return [
+            {"id": "type_blank", "name": "Blank project",
+             "category": "general",
+             "description": "Start without predefined seats.",
+             "seat_templates": []},
+            {"id": "type_software", "name": "Software development",
+             "category": "software",
+             "description": "A compact product team for building and validating software.",
+             "seat_templates": ["seat_architect", "seat_developer",
+                                "seat_tester"]},
         ]
 
     def _read(self, relative, fallback=None):
@@ -88,6 +140,16 @@ class Store:
         with self._lock:
             self._write("members.json", [m.as_dict() for m in sinaxa.members])
 
+    def save_seat_templates(self, sinaxa):
+        with self._lock:
+            self._write("seat_templates.json",
+                        [t.as_dict() for t in sinaxa.seat_templates])
+
+    def save_project_types(self, sinaxa):
+        with self._lock:
+            self._write("project_types.json",
+                        [t.as_dict() for t in sinaxa.project_types])
+
     def save_project(self, project):
         with self._lock:
             self._write(os.path.join("projects", project.id, "project.json"),
@@ -96,6 +158,8 @@ class Store:
     def save_all(self, sinaxa):
         self.save_engines(sinaxa)
         self.save_members(sinaxa)
+        self.save_seat_templates(sinaxa)
+        self.save_project_types(sinaxa)
         for project in sinaxa.projects:
             self.save_project(project)
         self._write("meta.json", {"schema": SCHEMA_VERSION})

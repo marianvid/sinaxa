@@ -40,3 +40,11 @@ def test_erasing_is_scoped_to_sinaxa_project(tmp_path):
     store.save_project(project)
     store.erase_project(project)
     assert outside.read_text() == "safe"
+
+
+def test_new_store_includes_minimum_viable_catalogs(tmp_path):
+    state = Store(tmp_path).load()
+    assert {item.id for item in state.project_types} >= {
+        "type_blank", "type_software"}
+    assert {item.id for item in state.seat_templates} >= {
+        "seat_architect", "seat_developer", "seat_tester"}

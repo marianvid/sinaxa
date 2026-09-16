@@ -79,3 +79,17 @@ def test_remove_seat_deletes_direct_history_only(app):
     app.remove_seat(project.id, first.id)
     assert not app.store.transcript_path(project, direct) or not __import__('os').path.exists(app.store.transcript_path(project, direct))
     assert app.store.messages(project, custom)[0]["text"] == "keep"
+
+
+def test_type_templates_are_persisted_and_seed_new_projects(app):
+    template = app.add_seat_template(
+        role="Analyst", prompt="Find reliable sources", category="general")
+    project_type = app.add_project_type(
+        name="Research", category="general", seat_templates=[template.id])
+    project = app.add_project("Evidence", type_id=project_type.id)
+
+    reloaded = app.store.load()
+    made = reloaded.project(project.id)
+    assert made.type_id == project_type.id
+    assert made.seats[0].template_id == template.id
+    assert made.seats[0].occupant is None

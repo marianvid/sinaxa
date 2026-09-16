@@ -1,9 +1,9 @@
 from pathlib import Path
 
 
-def test_five_sections_are_independent_files():
+def test_primary_sections_are_independent_files():
     ui = Path(__file__).parents[1] / "ui"
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         for suffix in (".html", ".css", ".js"):
             assert (ui / (page + suffix)).is_file()
 
@@ -14,29 +14,30 @@ def test_pages_extend_the_original_visual_system():
     assert "--bg:#14161c" in base
     assert "grid-template-columns:262px 1fr" in base
     assert ".brand .mark:after" in base
-    for page in ("projects", "members", "seats", "engines"):
+    for page in ("projects", "members", "seats", "types", "engines"):
         assert "@import url('/base.css')" in (ui / (page + ".css")).read_text()
 
 
 def test_navigation_links_all_primary_sections():
     ui = Path(__file__).parents[1] / "ui"
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         assert "/projects.html" in html
         assert "/members.html" in html
         assert "/seats.html" in html
+        assert "/types.html" in html
         assert "/engines.html" in html
         assert "/settings.html" in html
 
 
 def test_named_navigation_is_grouped_at_the_top_right():
     ui = Path(__file__).parents[1] / "ui"
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         assert html.index('class="global-header"') < html.index('class="side"')
         assert 'class="global-nav"' in html
         assert 'class="top"' not in html
-        for label in ("Chats", "Agents", "Seats", "Engines", "Settings"):
+        for label in ("Chats", "Agents", "Seats", "Types", "Engines", "Settings"):
             assert f'<span>{label}</span>' in html
         assert 'id="themeToggle"' in html
         assert html.index('class="global-nav"') < html.index('class="global-actions"')
@@ -46,7 +47,7 @@ def test_named_navigation_is_grouped_at_the_top_right():
 
 def test_sidebar_is_always_projects_without_seats_or_sessions_sections():
     ui = Path(__file__).parents[1] / "ui"
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         side = html[html.index('class="side"'):html.index('</aside>')]
         assert '>Projects ' in side
@@ -57,7 +58,7 @@ def test_sidebar_is_always_projects_without_seats_or_sessions_sections():
 
 def test_status_bar_is_removed_from_every_page():
     ui = Path(__file__).parents[1] / "ui"
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         assert 'statusbar' not in (ui / (page + ".html")).read_text()
     assert '.statusbar' not in (ui / "base.css").read_text()
     assert '.statusbar' not in (ui / "settings.css").read_text()
@@ -70,7 +71,7 @@ def test_global_theme_toggle_is_shared_by_every_page():
     assert "sinaxa-theme" in base_js
     assert '<svg class="theme-icon"' in base_js
     assert "☀" not in base_js and "☾" not in base_js
-    for page in ("projects", "members", "seats", "engines", "settings"):
+    for page in ("projects", "members", "seats", "types", "engines", "settings"):
         html = (ui / (page + ".html")).read_text()
         assert '<script src="/base.js"></script>' in html
     server = (ui.parent / "src" / "server.py").read_text()

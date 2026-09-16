@@ -106,9 +106,9 @@ class App:
                     self.store.save_checkpoint(project, talk.session, seat.id, None)
 
     # projects ------------------------------------------------------------
-    def add_project(self, name, cwd=None):
+    def add_project(self, name, cwd=None, type_id=None):
         with self._lock:
-            project = self.sinaxa.add_project(name, cwd or self.cwd)
+            project = self.sinaxa.add_project(name, cwd or self.cwd, type_id)
             self.store.save_project(project)
             return project
 
@@ -151,11 +151,54 @@ class App:
         return project
 
     # seats ---------------------------------------------------------------
-    def add_seat(self, project_id, role, prompt, occupant):
+    # reusable seat templates --------------------------------------------
+    def add_seat_template(self, **fields):
+        with self._lock:
+            template = self.sinaxa.add_seat_template(**fields)
+            self.store.save_seat_templates(self.sinaxa)
+            return template
+
+    def update_seat_template(self, template_id, **fields):
+        with self._lock:
+            template = self.sinaxa.update_seat_template(template_id, **fields)
+            self.store.save_seat_templates(self.sinaxa)
+            return template
+
+    def remove_seat_template(self, template_id):
+        with self._lock:
+            template = self.sinaxa.remove_seat_template(template_id)
+            self.store.save_seat_templates(self.sinaxa)
+            return template
+
+    # project types ------------------------------------------------------
+    def add_project_type(self, **fields):
+        with self._lock:
+            project_type = self.sinaxa.add_project_type(**fields)
+            self.store.save_project_types(self.sinaxa)
+            return project_type
+
+    def update_project_type(self, type_id, **fields):
+        with self._lock:
+            project_type = self.sinaxa.update_project_type(type_id, **fields)
+            self.store.save_project_types(self.sinaxa)
+            return project_type
+
+    def remove_project_type(self, type_id):
+        with self._lock:
+            project_type = self.sinaxa.remove_project_type(type_id)
+            self.store.save_project_types(self.sinaxa)
+            return project_type
+
+    # project seats ------------------------------------------------------
+    def add_seat(self, project_id, role, prompt, occupant=None,
+                 template_id=None):
         with self._lock:
             project = self.sinaxa.project(project_id)
-            self.sinaxa.member(occupant)
-            seat = project.add_seat(role, prompt, occupant)
+            if occupant:
+                self.sinaxa.member(occupant)
+            if template_id:
+                self.sinaxa.seat_template(template_id)
+            seat = project.add_seat(role, prompt, occupant, template_id)
             self.store.save_project(project)
             return seat
 
@@ -164,8 +207,10 @@ class App:
             project = self.sinaxa.project(project_id)
             seat = project.seat(seat_id)
             if "occupant" in fields:
-                self.sinaxa.member(fields["occupant"])
-                seat.occupant = fields["occupant"]
+                occupant = fields["occupant"] or None
+                if occupant:
+                    self.sinaxa.member(occupant)
+                seat.occupant = occupant
             if "role" in fields and fields["role"].strip():
                 seat.role = fields["role"].strip()
                 direct = project.direct_session(seat.id)
@@ -291,12 +336,17 @@ class App:
         for project in self.sinaxa.projects:
             projects.append({"id": project.id, "name": project.name,
                              "cwd": project.cwd, "state": project.state,
+                             "type_id": project.type_id,
                              "storage": self.store.storage(project),
                              "sessions": [dict(session.as_dict(),
                                 storage=self.store.storage(project, session))
                                 for session in project.sessions]})
         out = {"engines": [describe(e) for e in self.sinaxa.engines],
                "members": [m.as_dict() for m in self.sinaxa.members],
+               "seat_templates": [t.as_dict()
+                                  for t in self.sinaxa.seat_templates],
+               "project_types": [t.as_dict()
+                                 for t in self.sinaxa.project_types],
                "projects": projects,
                "lead": self.sinaxa.lead.as_dict() if self.sinaxa.lead else None}
         if not self.sinaxa.projects:

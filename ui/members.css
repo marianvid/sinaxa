@@ -1,2 +1,3 @@
 @import url('/base.css');
 .card{cursor:pointer}.card h2{font-size:13px;min-width:140px;margin:0}.card p{color:var(--dim);font-size:11.5px;flex:1;margin:0}.tags{display:flex;gap:5px}.tags span{font-size:10px;color:var(--dim2);border:1px solid var(--line);border-radius:4px;padding:0 5px}.card:before{content:'◉';width:22px;height:22px;border-radius:6px;background:var(--seat);display:grid;place-items:center;color:var(--on-colour);font-size:9px}.danger{color:var(--red)}
+.mcp-list{margin-top:4px;border:1px solid var(--line);border-radius:7px;padding:5px 8px}.mcp-list .choice{margin:4px 0}

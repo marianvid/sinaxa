@@ -14,7 +14,7 @@ from .model import ModelError
 HOST, PORT = "127.0.0.1", 8789
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(ROOT, "ui")
-PAGES = ("projects", "members", "seats", "engines", "settings")
+PAGES = ("projects", "members", "seats", "types", "engines", "settings")
 STATIC = {"/%s.%s" % (page, ext): ("%s.%s" % (page, ext),
           {"html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
            "js": "text/javascript; charset=utf-8"}[ext])
@@ -125,7 +125,8 @@ class Handler(BaseHTTPRequestHandler):
                                         decode_images(body.get("images")))
             return {"ok": True, "accepted": True, "message": message, "job": job}
         if parts == ["api", "projects"]:
-            made = self.app.add_project(body["name"], body.get("cwd"))
+            made = self.app.add_project(body["name"], body.get("cwd"),
+                                        body.get("type_id"))
             return {"ok": True, "project": made.as_dict()}
         if parts == ["api", "members"]:
             made = self.app.add_member(**self.fields(body, (
@@ -134,8 +135,17 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True, "member": made.as_dict()}
         if parts == ["api", "seats"]:
             made = self.app.add_seat(body["project"], body["role"],
-                                     body["prompt"], body["occupant"])
+                                     body["prompt"], body.get("occupant"),
+                                     body.get("template_id"))
             return {"ok": True, "seat": made.as_dict()}
+        if parts == ["api", "seat-templates"]:
+            made = self.app.add_seat_template(**self.fields(body, (
+                "role", "prompt", "category", "default_agent")))
+            return {"ok": True, "seat_template": made.as_dict()}
+        if parts == ["api", "project-types"]:
+            made = self.app.add_project_type(**self.fields(body, (
+                "name", "category", "description", "seat_templates")))
+            return {"ok": True, "project_type": made.as_dict()}
         if parts == ["api", "sessions"]:
             made = self.app.add_session(body["project"], body["name"],
                                         body.get("participants", []))
@@ -161,6 +171,10 @@ class Handler(BaseHTTPRequestHandler):
             "seats": lambda: self.app.update_seat(body["project"], ident,
                                                    **{k: v for k, v in body.items()
                                                       if k != "project"}).as_dict(),
+            "seat-templates": lambda: self.app.update_seat_template(
+                ident, **body).as_dict(),
+            "project-types": lambda: self.app.update_project_type(
+                ident, **body).as_dict(),
             "sessions": lambda: self.app.update_session(body["project"], ident,
                                                          **{k: v for k, v in body.items()
                                                             if k != "project"}).as_dict(),
@@ -179,6 +193,10 @@ class Handler(BaseHTTPRequestHandler):
             self.app.remove_project(ident, query.get("erase") == "1")
         elif kind == "seats":
             self.app.remove_seat(query["project"], ident)
+        elif kind == "seat-templates":
+            self.app.remove_seat_template(ident)
+        elif kind == "project-types":
+            self.app.remove_project_type(ident)
         elif kind == "sessions":
             self.app.remove_session(query["project"], ident)
         else:
