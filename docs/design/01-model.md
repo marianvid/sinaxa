@@ -42,6 +42,11 @@ Sinaxa sends only unseen deltas to the persistent native context. Consequently,
 knowledge acquired in Main and direct conversation remains available to the
 same agent without replaying the entire transcript on every turn.
 
+Visibility constrains disclosure, not reasoning. An agent uses all knowledge in
+its project context when completing work in any session. It avoids unnecessary
+quotation of private transcript content, but may disclose relevant details when
+they are required to complete the lead's request or the lead asks explicitly.
+
 Project types are used only when a project is created. Their templates are
 copied, not referenced as live configuration, so changing the global catalog
 cannot silently rewrite an existing project's team or instructions.

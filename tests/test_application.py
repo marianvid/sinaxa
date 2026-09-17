@@ -203,9 +203,14 @@ def test_human_mentions_limit_replies_and_preserve_later_awareness(tmp_path):
         assert "@Astra answer this" in engines.heard_by("Opus")[0]
         assert "addressed answer" in engines.heard_by("Opus")[0]
         assert "provider-native" in engines.agents["Astra"].instructions
-        assert "context only and never invites your response" in (
-            engines.agents["Astra"].instructions)
-        assert "sufficient authorization" in engines.agents["Astra"].instructions
+        instructions = " ".join(
+            engines.agents["Astra"].instructions.split())
+        assert "context only and never invites your response" in instructions
+        assert "Use all available project knowledge" in instructions
+        assert "visibility controls disclosure" in instructions.casefold()
+        assert "necessary to complete the human lead's current request" in (
+            instructions)
+        assert "sufficient authorization" in instructions
         assert "never repeat them" in engines.agents["Astra"].instructions
     finally:
         app.stop()
