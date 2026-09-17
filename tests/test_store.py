@@ -115,6 +115,23 @@ def test_transcript_pages_return_recent_messages_then_older_windows(tmp_path):
     assert not oldest["has_more"]
 
 
+def test_transcript_can_open_at_last_read_and_page_forward(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    session = project.team_session
+    for seq in range(1, 151):
+        store.append(project, session, {"seq": seq, "text": "message %d" % seq})
+
+    anchored = store.message_page(project, session, anchor=70, limit=10)
+    newer = store.message_page(
+        project, session, after=anchored["newest_seq"], limit=10)
+
+    assert [m["seq"] for m in anchored["messages"]] == list(range(70, 80))
+    assert anchored["has_more"] and anchored["has_newer"]
+    assert [m["seq"] for m in newer["messages"]] == list(range(80, 90))
+    assert newer["has_newer"]
+
+
 def test_transcript_search_is_filtered_before_it_is_paged(tmp_path):
     store = Store(tmp_path)
     project = Sinaxa().add_project("P")

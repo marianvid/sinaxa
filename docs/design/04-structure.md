@@ -56,9 +56,14 @@ or together from session management. Rewrites are atomic, sequence identifiers
 remain stable, and attachment cleanup removes only files no longer referenced
 by a retained message. The active epoch is never included in this cleanup.
 
-The browser initially requests the latest transcript window and requests older
-pages when the user scrolls to the top. Search is applied before paging. This
-keeps long conversations usable without changing their durable history.
+The browser normally requests the latest transcript window. When an unread
+session opens, it instead requests a window anchored at the durable human read
+cursor: the last read message is shown first, older pages remain available
+above it, and newer pages are fetched while the user scrolls toward the end.
+Only reaching the newest message while that session and the application are in
+focus advances the cursor and clears its unread marker. Search is applied
+before paging and never advances the cursor. This keeps long conversations
+usable without changing their durable history.
 
 ## Disk layout
 

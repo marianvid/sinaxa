@@ -116,11 +116,14 @@ class Talk:
             self.conversations.clear()
             self.session.context_start_seq = self.session.seq + 1
             self.store.save_project(self.project)
-            return self.post(
+            boundary = self.post(
                 "Context cleared — earlier messages remain in the transcript "
                 "but are no longer sent to agents.",
                 author="system", kind="boundary",
                 meta={"boundary": "context_clear"})
+            self.session.closed_contexts += 1
+            self.store.save_project(self.project)
+            return boundary
 
     def line(self, message, carried=True):
         count = len(message.get("images", []))
@@ -248,6 +251,8 @@ class Talk:
             if meta:
                 message["meta"] = meta
             self.store.append(self.project, self.session, message)
+            if author not in ("lead", "system"):
+                self.session.unread_count += 1
             self.store.save_project(self.project)
             return message
 

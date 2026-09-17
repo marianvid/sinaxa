@@ -47,6 +47,25 @@ def test_message_is_accepted_then_both_team_members_answer(app):
                for name in ("Astra", "Opus"))
 
 
+def test_agent_replies_remain_unread_until_the_session_end_is_marked(app):
+    project, _, _ = furnish(app)
+    session = project.team_session
+    _, job = app.say(project.id, session.id, "Hello")
+    wait(app, job)
+
+    state = app.state(project.id, session.id)
+    listed = next(item for item in state["projects"][0]["sessions"]
+                  if item["id"] == session.id)
+    assert listed["unread"] == 2
+    assert session.read_seq == 0
+
+    assert app.mark_read(project.id, session.id, session.seq) == session.seq
+    assert session.unread_count == 0
+    loaded = app.store.load().project(project.id).session(session.id)
+    assert loaded.read_seq == session.seq
+    assert loaded.unread_count == 0
+
+
 def test_direct_session_only_calls_its_seat(app):
     project, first, _ = furnish(app)
     direct = project.direct_session(first.id)

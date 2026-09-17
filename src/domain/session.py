@@ -10,7 +10,8 @@ class Session:
     def __init__(self, name, participants=None, kind=CUSTOM, id=None, seq=0,
                  context_start_seq=0, archived=False, created_at=None,
                  last_activity_at=None, turn_timeout=DEFAULT_TURN_TIMEOUT,
-                 max_agent_turns=DEFAULT_MAX_AGENT_TURNS):
+                 max_agent_turns=DEFAULT_MAX_AGENT_TURNS, read_seq=0,
+                 unread_count=0, closed_contexts=0):
         if kind not in (DIRECT, TEAM, CUSTOM):
             raise ModelError("unknown session kind")
         if kind == CUSTOM and not (name or "").strip():
@@ -20,6 +21,9 @@ class Session:
         self.participants = list(dict.fromkeys(participants or []))
         self.kind = kind
         self.seq = int(seq)
+        self.read_seq = max(0, min(int(read_seq), self.seq))
+        self.unread_count = max(0, int(unread_count))
+        self.closed_contexts = max(0, int(closed_contexts))
         self.context_start_seq = int(context_start_seq)
         self.archived = bool(archived)
         self.created_at = created_at
@@ -38,7 +42,10 @@ class Session:
     def as_dict(self):
         return {"id": self.id, "name": self.name,
                 "participants": self.participants, "kind": self.kind,
-                "seq": self.seq, "context_start_seq": self.context_start_seq,
+                "seq": self.seq, "read_seq": self.read_seq,
+                "unread_count": self.unread_count,
+                "closed_contexts": self.closed_contexts,
+                "context_start_seq": self.context_start_seq,
                 "archived": self.archived, "created_at": self.created_at,
                 "last_activity_at": self.last_activity_at,
                 "turn_timeout": self.turn_timeout,
@@ -46,4 +53,9 @@ class Session:
 
     @classmethod
     def from_dict(cls, raw):
+        raw = dict(raw)
+        # Existing transcripts predate unread tracking. Treat their current
+        # end as already read so an upgrade does not manufacture alerts for
+        # old conversations.
+        raw.setdefault("read_seq", raw.get("seq", 0))
         return cls(**raw)

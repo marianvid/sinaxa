@@ -96,7 +96,20 @@ def test_projects_exposes_non_destructive_clear_context_action():
     assert "/context" in script
     assert "/history" in script
     assert "Delete preceding history" in script
-    assert "Delete all history from contexts already cleared" in script
+    assert 'id="clearClosedHistory"' in html
+    assert "Delete all cleared context history" in script
+
+
+def test_projects_tracks_unread_sessions_until_the_visible_end_is_read():
+    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    assert "attention-dot" in script
+    assert "openingUnread" in script
+    assert "scrollAnchor" in script
+    assert "maybeMarkRead" in script
+    assert "/read" in script
+    assert "document.hasFocus()" in script
+    assert "$('search').value" in script
+    assert "loadNewer" in script
 
 
 def test_projects_exposes_hierarchical_project_navigation_and_overview():

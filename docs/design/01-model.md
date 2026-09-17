@@ -17,6 +17,12 @@ maximum number of agent turns in one human-initiated round. These values can be
 overridden per session because a quick review and a long research task have
 different execution profiles.
 
+The human lead also has a durable read cursor per session. Agent messages after
+that cursor remain unread until the session is visible, the application has
+focus and the lead reaches the newest message. This drives both the bold label
+and attention dot without treating a mere click as proof that the conversation
+was read.
+
 Team and direct sessions are derived project infrastructure. The team session
 tracks every current seat. Adding a seat creates its direct session; removing
 the seat removes that direct history. Custom and team histories remain after a

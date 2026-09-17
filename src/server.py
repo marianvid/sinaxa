@@ -92,7 +92,8 @@ class Handler(BaseHTTPRequestHandler):
             q = self.query
             return self.guarded(lambda: self.app.state(
                 q.get("project"), q.get("session"), q.get("search"),
-                q.get("before"), q.get("limit", 60)))
+                q.get("before"), q.get("after"), q.get("anchor"),
+                q.get("limit", 60)))
         if path == "/api/models":
             q = self.query
             return self.guarded(lambda: {"models": self.app.models_for(
@@ -159,6 +160,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.clear_context_history(
                     project, parts[2], body.get("boundary_seq"))
                 return {"ok": True, **result}
+            if parts[3] == "read":
+                read_seq = self.app.mark_read(
+                    project, parts[2], body.get("seq", 0))
+                return {"ok": True, "read_seq": read_seq}
         raise KeyError("no such endpoint")
 
     def patch(self, parts, body):

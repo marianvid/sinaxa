@@ -18,7 +18,7 @@ from collections import deque
 from .domain import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
                      Sinaxa)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 REMOVED = ".removed"
 IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{2,5}$")
 
@@ -67,6 +67,13 @@ class Store:
                     by_role[template.role.casefold()] = template
                 seat.template_id = template.id
                 changed = migrated = True
+            for session in project.sessions:
+                metrics = self._scan_session_metrics(project, session)
+                if (session.unread_count != metrics["unread"]
+                        or session.closed_contexts != metrics["closed_contexts"]):
+                    session.unread_count = metrics["unread"]
+                    session.closed_contexts = metrics["closed_contexts"]
+                    changed = migrated = True
             if changed:
                 self.save_project(project)
         if migrated:
@@ -251,8 +258,8 @@ class Store:
             with open(path, encoding="utf-8") as stream:
                 return [json.loads(line) for line in stream if line.strip()]
 
-    def message_page(self, project, session, before=None, limit=60,
-                     search=None):
+    def message_page(self, project, session, before=None, after=None,
+                     anchor=None, limit=60, search=None):
         """Return one ascending page ending just before ``before``.
 
         The file is scanned without materialising the whole transcript. The
@@ -261,7 +268,12 @@ class Store:
         path = self.transcript_path(project, session)
         limit = max(1, min(int(limit), 200))
         before = int(before) if before is not None else None
+        after = int(after) if after is not None else None
+        anchor = int(anchor) if anchor is not None else None
         wanted = search.casefold() if search else None
+        if after is not None or anchor is not None:
+            return self._forward_message_page(
+                path, limit, wanted, after=after, anchor=anchor)
         found = deque(maxlen=limit + 1)
         with self._lock:
             if os.path.exists(path):
@@ -281,8 +293,62 @@ class Store:
             found.popleft()
         messages = list(found)
         return {"messages": messages, "has_more": has_more,
+                "has_newer": False,
                 "oldest_seq": messages[0].get("seq") if messages else None,
+                "newest_seq": messages[-1].get("seq") if messages else None,
                 "limit": limit}
+
+    def _forward_message_page(self, path, limit, wanted, after=None,
+                              anchor=None):
+        previous = None
+        earlier = 0
+        following = []
+        with self._lock:
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as stream:
+                    for line in stream:
+                        if not line.strip():
+                            continue
+                        message = json.loads(line)
+                        if wanted and wanted not in message.get(
+                                "text", "").casefold():
+                            continue
+                        seq = message.get("seq", 0)
+                        if after is not None:
+                            if seq <= after:
+                                earlier += 1
+                                continue
+                        elif seq <= anchor:
+                            previous = message
+                            earlier += 1
+                            continue
+                        following.append(message)
+                        capacity = limit if previous is None else limit - 1
+                        if len(following) > capacity:
+                            break
+        messages = ([previous] if previous else []) + following[:(
+            limit if previous is None else limit - 1)]
+        has_newer = len(following) > (limit if previous is None else limit - 1)
+        return {"messages": messages,
+                "has_more": bool(earlier - (1 if previous else 0)),
+                "has_newer": has_newer,
+                "oldest_seq": messages[0].get("seq") if messages else None,
+                "newest_seq": messages[-1].get("seq") if messages else None,
+                "limit": limit}
+
+    def session_metrics(self, project, session):
+        del project
+        return {"unread": session.unread_count,
+                "closed_contexts": session.closed_contexts}
+
+    def _scan_session_metrics(self, project, session):
+        messages = self.messages(project, session)
+        unread = sum(1 for message in messages
+                     if message.get("seq", 0) > session.read_seq
+                     and message.get("author") not in ("lead", "system"))
+        boundaries = [message for message in messages
+                      if self.is_context_boundary(message)]
+        return {"unread": unread, "closed_contexts": len(boundaries)}
 
     def clear_history(self, project, session):
         path = self.transcript_path(project, session)
@@ -311,7 +377,8 @@ class Store:
             boundaries = [message.get("seq", 0) for message in messages
                           if self.is_context_boundary(message)]
             if not boundaries:
-                return {"removed": 0, "attachments": 0}
+                return {"removed": 0, "attachments": 0,
+                        "removed_contexts": 0, "removed_unread": 0}
             if boundary_seq is None:
                 lower, upper = 0, max(boundaries)
             else:
@@ -326,7 +393,14 @@ class Store:
                     if not lower < message.get("seq", 0) <= upper]
             self._replace_messages(project, session, kept)
             attachments = self._remove_orphan_images(project, session, kept)
-            return {"removed": len(removed), "attachments": attachments}
+            removed_contexts = 1 if boundary_seq is not None else len(boundaries)
+            removed_unread = sum(
+                1 for message in removed
+                if message.get("seq", 0) > session.read_seq
+                and message.get("author") not in ("lead", "system"))
+            return {"removed": len(removed), "attachments": attachments,
+                    "removed_contexts": removed_contexts,
+                    "removed_unread": removed_unread}
 
     def _replace_messages(self, project, session, messages):
         path = self.transcript_path(project, session)

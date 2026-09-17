@@ -320,6 +320,9 @@ class App:
                       for seat_id in session.participants}
         self.store.clear_history(project, session)
         session.seq = 0
+        session.read_seq = 0
+        session.unread_count = 0
+        session.closed_contexts = 0
         session.context_start_seq = 0
         session.last_activity_at = None
         for member_id in member_ids:
@@ -334,10 +337,24 @@ class App:
                and not job["future"].done() for job in self._jobs.values()):
             raise ModelError("wait for the current agent round to finish")
         try:
-            return self.store.clear_context_history(
+            result = self.store.clear_context_history(
                 project, session, boundary_seq=boundary_seq)
+            session.closed_contexts = max(
+                0, session.closed_contexts - result["removed_contexts"])
+            session.unread_count = max(
+                0, session.unread_count - result["removed_unread"])
+            self.store.save_project(project)
+            return result
         except ValueError as exc:
             raise ModelError(str(exc)) from exc
+
+    def mark_read(self, project_id, session_id, seq):
+        project, session = self.locate(project_id, session_id)
+        session.read_seq = max(session.read_seq,
+                               min(max(0, int(seq)), session.seq))
+        session.unread_count = 0
+        self.store.save_project(project)
+        return session.read_seq
 
     # talking -------------------------------------------------------------
     def say(self, project_id, session_id, text, images=None):
@@ -378,15 +395,17 @@ class App:
 
     # read model ----------------------------------------------------------
     def state(self, project_id=None, session_id=None, search=None,
-              before=None, limit=60):
+              before=None, after=None, anchor=None, limit=60):
         projects = []
         for project in self.sinaxa.projects:
             projects.append({"id": project.id, "name": project.name,
                              "cwd": project.cwd, "state": project.state,
                              "type_id": project.type_id,
                              "storage": self.store.storage(project),
-                             "sessions": [dict(session.as_dict(),
-                                storage=self.store.storage(project, session))
+                             "sessions": [dict(
+                                session.as_dict(),
+                                storage=self.store.storage(project, session),
+                                **self.store.session_metrics(project, session))
                                 for session in project.sessions]})
         out = {"engines": [describe(e) for e in self.sinaxa.engines],
                "members": [m.as_dict() for m in self.sinaxa.members],
@@ -400,8 +419,9 @@ class App:
             return out
         project = self.sinaxa.project(project_id) if project_id else self.sinaxa.projects[0]
         session = project.session(session_id) if session_id else project.team_session
-        page = self.store.message_page(project, session, before=before,
-                                       limit=limit, search=search)
+        page = self.store.message_page(
+            project, session, before=before, after=after, anchor=anchor,
+            limit=limit, search=search)
         talk = self._talks.get((project.id, session.id))
         out.update({"project": project.id, "session": session.id,
                     "seats": [dict(seat.as_dict(),

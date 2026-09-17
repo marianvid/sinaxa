@@ -1,6 +1,7 @@
 import pytest
 
-from src.model import CLOSED, CUSTOM, DIRECT, TEAM, EngineConfig, ModelError, Sinaxa
+from src.model import (CLOSED, CUSTOM, DIRECT, TEAM, EngineConfig, ModelError,
+                       Session, Sinaxa)
 
 
 def furnished():
@@ -20,6 +21,12 @@ def test_seats_create_direct_sessions_and_join_team():
     b = state.add_project_seat(project.id, reviewer.id, two.id)
     assert project.team_session.participants == [a.id, b.id]
     assert sorted(s.kind for s in project.sessions) == [DIRECT, DIRECT, TEAM]
+
+
+def test_legacy_session_history_is_read_when_unread_tracking_is_added():
+    session = Session.from_dict({"name": "Legacy", "kind": TEAM, "seq": 9})
+    assert session.read_seq == 9
+    assert session.unread_count == 0
 
 
 def test_removing_seat_removes_direct_but_preserves_group_container():
