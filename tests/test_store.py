@@ -32,6 +32,21 @@ def test_transcript_checkpoint_storage_and_clear(tmp_path):
     assert store.messages(project, session) == []
 
 
+def test_project_agent_context_tracks_each_session_cursor(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    store.save_agent_context(project, "member", {
+        "native_id": "native", "engine": "claude",
+        "delivered": {"main": 12, "direct": 4}})
+
+    checkpoint = store.agent_contexts(project)["member"]
+    assert checkpoint["native_id"] == "native"
+    assert checkpoint["delivered"] == {"main": 12, "direct": 4}
+
+    store.forget_agent_session(project, "direct")
+    assert store.agent_contexts(project)["member"]["delivered"] == {"main": 12}
+
+
 def test_transcript_pages_return_recent_messages_then_older_windows(tmp_path):
     store = Store(tmp_path)
     state = Sinaxa(engines=[EngineConfig("claude", "claude")])

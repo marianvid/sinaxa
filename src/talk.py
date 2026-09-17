@@ -7,22 +7,23 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from .conversation import Conversation
 from .domain import ModelError
 
-PREAMBLE = """You are {name}, occupying the {role} seat in project {project}.
-This conversation is the session {session}. The human lead is {lead}.
-Participants: {participants}.
+PREAMBLE = """You are {name}, a persistent member of project {project}.
+The human lead is {lead}. Your project roles and instructions are:
+{roles}
+
+Project members: {participants}.
 
 Communication between participants is mediated by this transcript. To ask
 another participant to answer, address them as @Name. Do not use provider-native
-agent messaging or agent-discovery tools for Sinaxa participants. Every message
-from the human lead is addressed to every agent in this session and requires an
-answer, whether or not it contains an @mention. Messages from another agent are
-delivered to you when that agent explicitly addresses you as @Name. If you
-mention another participant, you are explicitly requesting another turn from
-them. Be conversational and concise unless the lead asks for a detailed
-artifact.
-
-Seat instructions:
-{prompt}"""
+agent messaging or agent-discovery tools for Sinaxa participants. Messages are
+labelled with their Sinaxa channel. Main-channel messages are visible to every
+project member; direct-channel messages are private to you and the human lead;
+group-channel messages are visible only to that group's participants. Private
+information may inform your reasoning, but do not reveal it in another channel
+unless the human lead explicitly asks you to do so. A routing note at the end
+of each delivery says whether a visible reply is required. If you mention
+another participant, you explicitly request another turn from them. Be
+conversational and concise unless the lead asks for a detailed artifact."""
 
 
 class Talk:
@@ -48,13 +49,17 @@ class Talk:
 
     def instructions_for(self, seat):
         lead = self.sinaxa.lead
+        member = self.sinaxa.member(seat.occupant)
+        member_seats = [one for one in self.project.seats
+                        if one.occupant == member.id]
         return PREAMBLE.format(
-            name=self.sinaxa.seat_name(self.project, seat), role=seat.role,
-            project=self.project.name, session=self.session.name,
+            name=member.name, project=self.project.name,
             lead=lead.name if lead else "the human lead",
             participants=", ".join(
                 "%s (%s)" % (self.sinaxa.seat_name(self.project, one), one.role)
-                for one in self.participants()), prompt=seat.prompt)
+                for one in self.project.seats),
+            roles="\n".join("- %s: %s" % (one.role, one.prompt)
+                            for one in member_seats))
 
     def start(self, seat):
         conversation = self.conversation(seat)
@@ -62,36 +67,43 @@ class Talk:
         if trouble:
             conversation.trouble = trouble
             return None
+        member = self.sinaxa.member(seat.occupant)
+        if (conversation.agent is not None
+                and hasattr(self.engines, "is_current")
+                and not self.engines.is_current(member.id,
+                                                conversation.agent)):
+            conversation.agent = None
         if conversation.agent is None:
-            checkpoint = self.store.checkpoints(self.project, self.session).get(
-                seat.id, {})
-            member = self.sinaxa.member(seat.occupant)
+            checkpoint = self.store.agent_contexts(self.project).get(
+                member.id, {})
+            already_live = (self.engines.has_agent(member.id)
+                            if hasattr(self.engines, "has_agent") else False)
             conversation.agent = self.engines.agent(
-                member, self.sinaxa.seat_name(self.project, seat),
+                member, member.name,
                 self.instructions_for(seat), native_id=checkpoint.get("native_id"))
-            if checkpoint.get("native_id") and getattr(
-                    conversation.agent, "resumed", False):
-                conversation.delivered = int(checkpoint.get("delivered", 0))
+            if (not already_live and checkpoint.get("native_id") and not getattr(
+                    conversation.agent, "resumed", False)):
+                self.store.save_agent_context(self.project, member.id, None)
             conversation.trouble = None
         return conversation.agent
 
     def stop(self):
+        """Detach this session view; the project runtime owns live agents."""
         for conversation in self.conversations.values():
-            if conversation.agent:
-                try:
-                    conversation.agent.stop()
-                except Exception:
-                    pass
-                conversation.agent = None
+            conversation.agent = None
 
     def clear_context(self):
         """Start a new context epoch while keeping the visible transcript."""
         with self._lock:
-            for conversation in self.conversations.values():
-                if conversation.agent:
-                    conversation.agent.stop()
+            members = set()
+            for seat in self.participants():
+                if self.sinaxa.seat_runs_engine(seat):
+                    members.add(seat.occupant)
+            for member_id in members:
+                if hasattr(self.engines, "reset_agent"):
+                    self.engines.reset_agent(member_id)
+                self.store.save_agent_context(self.project, member_id, None)
             self.conversations.clear()
-            self.store.clear_checkpoints(self.project, self.session)
             self.session.context_start_seq = self.session.seq + 1
             self.store.save_project(self.project)
             return self.post(
@@ -106,53 +118,107 @@ class Talk:
             note = " [%d image%s %s]" % (
                 count, "" if count == 1 else "s",
                 "attached" if carried else "not supported by this engine")
-        return "[%s] %s: %s%s" % (self.session.name,
+        session_name = message.get("_session_name", self.session.name)
+        visibility = message.get("_visibility", "session")
+        return "[%s · %s] %s: %s%s" % (session_name, visibility,
                                    message.get("author_name", "?"),
                                    message.get("text", ""), note)
 
     def context_for(self, seat, through):
-        conversation = self.conversation(seat)
-        return [message for message in self.store.messages(self.project, self.session)
-                if self.session.context_start_seq <= message.get("seq", 0) <= through
-                and message.get("seq", 0) > conversation.delivered
-                and message.get("kind") not in ("boundary", "compaction")]
+        member = self.sinaxa.member(seat.occupant)
+        member_seats = {one.id for one in self.project.seats
+                        if one.occupant == member.id}
+        checkpoint = self.store.agent_contexts(self.project).get(member.id, {})
+        delivered = checkpoint.get("delivered") or {}
+        batch = []
+        for session in self.project.sessions:
+            if not member_seats.intersection(session.participants):
+                continue
+            cursor = int(delivered.get(session.id, 0))
+            for stored in self.store.messages(self.project, session):
+                seq = stored.get("seq", 0)
+                if seq <= cursor or seq < session.context_start_seq:
+                    continue
+                if stored.get("kind") in ("boundary", "compaction"):
+                    continue
+                if session.id == self.session.id and seq > through["seq"]:
+                    continue
+                if stored.get("ts", 0) > through.get("ts", float("inf")):
+                    continue
+                message = dict(stored)
+                message["_session_id"] = session.id
+                message["_session_name"] = (
+                    "Main" if session.kind == "team" else session.name)
+                message["_visibility"] = (
+                    "private" if session.kind == "direct" else
+                    "team" if session.kind == "team" else "group")
+                batch.append(message)
+        return sorted(batch, key=lambda item: (
+            item.get("ts", 0), item["_session_id"], item.get("seq", 0)))
 
     def deliver(self, seat, message, required=False):
         agent = self.start(seat)
         if not agent:
             return None, {"error": self.conversation(seat).trouble}
-        carried = bool(getattr(agent, "accepts_images", False))
-        batch = self.context_for(seat, message["seq"])
-        paths = []
-        for item in batch:
-            if carried:
-                paths.extend(self.store.image_paths(self.project, self.session, item))
-        routing = ("[Sinaxa routing] This turn requires your answer: it was "
-                   "sent to this session by the human lead or you were "
-                   "explicitly @mentioned." if required else
-                   "[Sinaxa routing] You were not explicitly mentioned. "
-                   "Answer only if relevant; otherwise return [NO_REPLY].")
-        prompt = "\n".join(self.line(item, carried) for item in batch)
-        prompt = "%s\n\n%s" % (prompt, routing)
-        answer, meta = agent.ask(prompt, timeout=self.session.turn_timeout,
-                                 images=paths)
-        conversation = self.conversation(seat)
-        # A queued mention can become stale after a newer transcript batch was
-        # delivered. Never move the cursor backwards in that case.
-        conversation.delivered = max(conversation.delivered, message["seq"])
-        native_id = agent.native_id() if hasattr(agent, "native_id") else None
-        self.store.save_checkpoint(self.project, self.session, seat.id, {
-            "native_id": native_id, "delivered": conversation.delivered,
-            "engine": self.sinaxa.member(seat.occupant).engine})
-        return answer, meta or {}
+        member = self.sinaxa.member(seat.occupant)
+        lock = (self.engines.agent_lock(member.id)
+                if hasattr(self.engines, "agent_lock") else self._lock)
+        with lock:
+            batch = self.context_for(seat, message)
+            carried = bool(getattr(agent, "accepts_images", False))
+            paths = []
+            for item in batch:
+                if carried:
+                    source = self.project.session(item["_session_id"])
+                    paths.extend(self.store.image_paths(
+                        self.project, source, item))
+            routing = ("[Sinaxa routing] Reply in channel %s. This turn "
+                       "requires your visible answer." % self.session.name
+                       if required else
+                       "[Sinaxa routing] Update your awareness, but do not "
+                       "produce a visible reply; return exactly [NO_REPLY].")
+            prompt = "\n".join(self.line(item, carried) for item in batch)
+            prompt = "%s\n\n%s" % (prompt, routing)
+            answer, meta = agent.ask(
+                prompt, timeout=self.session.turn_timeout, images=paths)
+            checkpoint = self.store.agent_contexts(self.project).get(
+                member.id, {})
+            delivered = dict(checkpoint.get("delivered") or {})
+            for item in batch:
+                source_id = item["_session_id"]
+                delivered[source_id] = max(
+                    int(delivered.get(source_id, 0)), item.get("seq", 0))
+            self.store.save_agent_context(self.project, member.id, {
+                "native_id": (agent.native_id()
+                              if hasattr(agent, "native_id") else None),
+                "delivered": delivered, "engine": member.engine})
+            self.conversation(seat).delivered = int(
+                delivered.get(self.session.id, 0))
+            return answer, meta or {}
+
+    def acknowledge(self, seat, message):
+        """Record an agent's own reply as already present in native context."""
+        member = self.sinaxa.member(seat.occupant)
+        checkpoint = self.store.agent_contexts(self.project).get(member.id, {})
+        delivered = dict(checkpoint.get("delivered") or {})
+        delivered[self.session.id] = max(
+            int(delivered.get(self.session.id, 0)), message.get("seq", 0))
+        agent = self.conversation(seat).agent
+        self.store.save_agent_context(self.project, member.id, {
+            "native_id": (agent.native_id()
+                          if agent and hasattr(agent, "native_id") else
+                          checkpoint.get("native_id")),
+            "delivered": delivered, "engine": member.engine})
+        self.conversation(seat).delivered = delivered[self.session.id]
 
     def speakers_for(self, text, author_seat=None):
         seats = [seat for seat in self.participants()
                  if seat.id != author_seat
                  and self.sinaxa.seat_runs_engine(seat)]
+        mentioned = self.sinaxa.mentioned(self.project, text, seats)
         if author_seat is None:
-            return seats
-        return self.sinaxa.mentioned(self.project, text, seats)
+            return mentioned or seats
+        return mentioned
 
     def post(self, text, author="lead", author_name=None, kind=None,
              images=None, meta=None):
@@ -190,8 +256,10 @@ class Talk:
             limit = self.session.max_agent_turns
 
             def enqueue(seat, through, required):
-                conversation = self.conversation(seat)
-                if conversation.delivered >= through["seq"]:
+                member = self.sinaxa.member(seat.occupant)
+                delivered = (self.store.agent_contexts(self.project)
+                             .get(member.id, {}).get("delivered", {}))
+                if int(delivered.get(self.session.id, 0)) >= through["seq"]:
                     return
                 queued = pending.get(seat.id)
                 if not queued or through["seq"] > queued[1]["seq"]:
@@ -252,6 +320,7 @@ class Talk:
                                             "compaction": details})
                         reply = self.post(answer, author=seat.id,
                                           author_name=name, meta=meta)
+                        self.acknowledge(seat, reply)
                         mentioned = self.sinaxa.mentioned(
                             self.project, answer,
                             [one for one in participants if one.id != seat.id])

@@ -14,8 +14,8 @@ UI pages -> HTTP adapter -> App composition root
 module. `model.py` is only a compatibility facade for older imports.
 `store.py` owns atomic JSON,
 append-only JSONL, attachments, storage accounting and destructive operations
-scoped to its state root. `talk.py` owns context projection, mentions and turn
-propagation, including concurrent fan-out and per-seat pending mailboxes.
+scoped to its state root. `talk.py` owns visibility projection, mentions and
+turn propagation, including concurrent fan-out and per-agent pending mailboxes.
 `runtime/` owns project isolation and concurrency policy. `engines/` contains
 only provider-specific process/protocol adapters; every Backend, Agent and
 native Session is isolated in its own module. `ports/` documents the structural
@@ -41,11 +41,15 @@ session acts as personal notes. User-created sessions remain explicit groups.
 
 ## Transcript and context
 
-The transcript is append-only and is the source of truth. Clearing context
-does not delete history: it advances the context boundary, clears disposable
-native checkpoints and appends a visible boundary event. Detectable native CLI
-compactions are also appended as transcript events but do not change Sinaxa's
-session-wide context boundary.
+Each session transcript is append-only and together they are the durable source
+of truth. The live native context is project-member scoped. Per-session inbox
+cursors record which visible events that agent already received, so normal
+turns append only unseen deltas and preserve provider caching.
+
+Clearing context does not delete history: it advances that session's context
+boundary, resets affected native project-member contexts and appends a visible
+boundary event. Detectable native CLI compactions are also appended as
+transcript events but do not change Sinaxa's session boundary.
 
 The browser initially requests the latest transcript window and requests older
 pages when the user scrolls to the top. Search is applied before paging. This
@@ -62,9 +66,9 @@ state/
 ├── project_types.json
 └── projects/<project-id>/
     ├── project.json
+    ├── agent_contexts.json
     └── sessions/<session-id>/
         ├── messages.jsonl
-        ├── conversations.json
         └── files/
 ```
 

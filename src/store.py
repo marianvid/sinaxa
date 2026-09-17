@@ -1,8 +1,9 @@
 """Versioned, atomic persistence owned by Sinaxa.
 
-Configuration is small JSON. A session transcript is append-only JSONL and
-native provider identifiers are disposable checkpoints: the transcript is
-the source of truth. Nothing outside this state root is ever deleted.
+Configuration is small JSON. Session transcripts are append-only JSONL and
+project-member native provider identifiers are disposable checkpoints: the
+transcripts are the durable source of truth. Nothing outside this state root
+is ever deleted.
 """
 
 import hashlib
@@ -17,7 +18,7 @@ from collections import deque
 from .domain import (EngineConfig, Member, Project, ProjectType, SeatTemplate,
                      Sinaxa)
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 REMOVED = ".removed"
 IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.[a-z0-9]{2,5}$")
 
@@ -198,6 +199,40 @@ class Store:
 
     def transcript_path(self, project, session):
         return os.path.join(self.session_dir(project, session), "messages.jsonl")
+
+    def agent_contexts_path(self, project):
+        return os.path.join(self.project_dir(project), "agent_contexts.json")
+
+    def agent_contexts(self, project):
+        relative = os.path.relpath(self.agent_contexts_path(project), self.root)
+        return self._read(relative, {})
+
+    def save_agent_context(self, project, member_id, checkpoint):
+        """Persist one native conversation and its per-session inbox cursors."""
+        with self._lock:
+            records = self.agent_contexts(project)
+            if checkpoint:
+                records[member_id] = checkpoint
+            else:
+                records.pop(member_id, None)
+            relative = os.path.relpath(self.agent_contexts_path(project),
+                                       self.root)
+            self._write(relative, records)
+
+    def forget_agent_session(self, project, session_id):
+        """Remove a deleted transcript from every agent's delivery cursor."""
+        with self._lock:
+            records = self.agent_contexts(project)
+            changed = False
+            for checkpoint in records.values():
+                delivered = checkpoint.get("delivered") or {}
+                if session_id in delivered:
+                    delivered.pop(session_id, None)
+                    changed = True
+            if changed:
+                relative = os.path.relpath(self.agent_contexts_path(project),
+                                           self.root)
+                self._write(relative, records)
 
     def append(self, project, session, message):
         path = self.transcript_path(project, session)

@@ -5,12 +5,12 @@ The context lives in the process, so only the new turn is billed —
 no --resume on every message.
 
 --resume is still used, but only where it belongs:
-  * switching to another session (switch_to)
-  * recovering after the process died (respawn)
+  * restoring the project-member context after application/project restart
+  * recovering after the process died
 
-The CLI session id is a cache. The room's transcript on disk is the
-source of truth; if the id is gone we mint a new one and lose nothing
-but the model's warm context.
+The CLI session id is a cache. Sinaxa's visible project transcripts are the
+durable source of truth; if the id is gone the orchestrator can rebuild a new
+native context from the unseen transcript events.
 """
 
 import base64

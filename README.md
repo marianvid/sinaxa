@@ -12,16 +12,18 @@ Workspace
 ├── Members                 reusable agent identity + model preferences
 └── Projects                working folder + logical open/closed state
     ├── Seats               project role + instructions + occupying member
-    └── Sessions            independent transcript and context
+    └── Sessions            transcript and routing views
         ├── Team            all current seats; managed, never deleted
         ├── Direct          one seat; managed with that seat
         └── Custom          an explicit seat selection
 ```
 
-`Session` is the only conversation container. There are no rooms. Removing a
-seat removes its direct session and history, while team/custom transcripts
-remain. Context belongs to `(session, seat)` and native provider IDs are only
-restart checkpoints; Sinaxa's transcript remains the source of truth.
+`Session` is the only visible conversation container. There are no rooms.
+Removing a seat removes its direct session and history, while team/custom
+transcripts remain. Runtime context belongs to `(project, member)`: one agent
+keeps a single native context across Main, direct and custom sessions. Native
+provider IDs are restart checkpoints; Sinaxa's transcripts remain the durable
+source of truth.
 
 ## Run
 
@@ -49,7 +51,8 @@ Members, Engines and Settings. Projects owns seat and session management.
 
 No provider process starts merely because Sinaxa or a project opens. The first
 new message starts a project-local runtime lazily. Codex and OpenCode use one
-backend per active project; Claude uses a process per active conversation.
+backend per active project. Each member uses one persistent native agent
+context per project; for Claude that means one CLI process per active member.
 Closing a project waits for its current turn, rejects new messages and stops
 everything owned by that project. Application shutdown stops all processes but
 does not rewrite the project's logical open/closed state.

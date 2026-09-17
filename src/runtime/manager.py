@@ -33,6 +33,11 @@ class RuntimeManager:
         runtime = self._projects.get(project_id)
         return runtime.status() if runtime else []
 
+    def reset_agent(self, project_id, member_id):
+        runtime = self._projects.get(project_id)
+        if runtime and hasattr(runtime, "reset_agent"):
+            runtime.reset_agent(member_id)
+
     def stop(self):
         for project_id in list(self._projects):
             self.close(project_id)

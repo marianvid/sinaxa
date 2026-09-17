@@ -118,3 +118,9 @@ def test_message_avatars_use_each_members_colour():
     script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
     assert "function messageColour" in script
     assert 'style="background:${messageColour(m)}"' in script
+
+
+def test_non_persistent_engine_mode_is_visible_but_disabled():
+    script = (Path(__file__).parents[1] / "ui" / "engines.js").read_text()
+    assert "Non-persistent / resume each turn — Not yet implemented" in script
+    assert '<option value="resume" disabled>' in script

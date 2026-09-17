@@ -5,6 +5,8 @@ order, and what it was never given -- without a model, a process or a
 subscription.
 """
 
+import threading
+
 
 class FakeAgent:
     provider = "fake"
@@ -60,12 +62,31 @@ class FakeEngines:
         self.blind = set(blind)     # seat names whose engine cannot see
         self.agents = {}            # name -> the most recent agent
         self.history = []           # every agent ever made, stops included
+        self._by_member = {}
+        self._locks = {}
 
     def agent(self, member, name, instructions, native_id=None):
+        if member.id in self._by_member:
+            return self._by_member[member.id]
         agent = FakeAgent(self, name, instructions)
         self.agents[name] = agent
         self.history.append(agent)
+        self._by_member[member.id] = agent
         return agent
+
+    def agent_lock(self, member_id):
+        return self._locks.setdefault(member_id, threading.RLock())
+
+    def has_agent(self, member_id):
+        return member_id in self._by_member
+
+    def is_current(self, member_id, agent):
+        return self._by_member.get(member_id) is agent
+
+    def reset_agent(self, member_id):
+        agent = self._by_member.pop(member_id, None)
+        if agent:
+            agent.stop()
 
     def models_for(self, engine):
         return ["fake/one", "fake/two"]

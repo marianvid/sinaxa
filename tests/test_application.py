@@ -43,7 +43,7 @@ def test_message_is_accepted_then_both_team_members_answer(app):
     messages = app.state(project.id, project.team_session.id)["messages"]
     assert messages[0]["author_name"] == "Marian"
     assert {m["author_name"] for m in messages[1:]} == {"Astra", "Opus"}
-    assert all("requires your answer" in app._fixed_engines.heard_by(name)[0]
+    assert all("requires your visible answer" in app._fixed_engines.heard_by(name)[0]
                for name in ("Astra", "Opus"))
 
 
@@ -53,7 +53,7 @@ def test_direct_session_only_calls_its_seat(app):
     _, job = app.say(project.id, direct.id, "Private")
     wait(app, job)
     assert [m["author_name"] for m in app.state(project.id, direct.id)["messages"]] == ["Marian", "Astra"]
-    assert "requires your answer" in app._fixed_engines.heard_by("Astra")[0]
+    assert "requires your visible answer" in app._fixed_engines.heard_by("Astra")[0]
 
 
 def test_clear_context_keeps_history_and_adds_boundary(app):
@@ -160,9 +160,9 @@ def test_human_seat_participates_without_being_run_as_an_engine(app):
             app.state(project.id, direct.id)["messages"]] == ["Marian"]
 
 
-def test_human_message_requires_every_session_agent_to_answer(tmp_path):
+def test_human_mentions_limit_replies_and_preserve_later_awareness(tmp_path):
     engines = FakeEngines({"Astra": "addressed answer",
-                           "Opus": "[NO_REPLY]"})
+                           "Opus": "later answer"})
     app = App(tmp_path, cwd=str(tmp_path), engines=engines)
     try:
         project, _, _ = furnish(app)
@@ -173,8 +173,13 @@ def test_human_message_requires_every_session_agent_to_answer(tmp_path):
         messages = app.state(project.id, project.team_session.id)["messages"]
         assert [message["author_name"] for message in messages] == [
             "Marian", "Astra"]
-        assert engines.heard_by("Opus")
-        assert "requires your answer" in engines.heard_by("Opus")[0]
+        assert not engines.heard_by("Opus")
+
+        direct = project.direct_session(project.seats[1].id)
+        _, direct_job = app.say(project.id, direct.id, "Private follow-up")
+        wait(app, direct_job)
+        assert "@Astra answer this" in engines.heard_by("Opus")[0]
+        assert "addressed answer" in engines.heard_by("Opus")[0]
         assert "provider-native" in engines.agents["Astra"].instructions
     finally:
         app.stop()
@@ -216,11 +221,48 @@ def test_agent_mentions_are_processed_fifo_without_cursor_regression(tmp_path):
         assert messages[0]["author_name"] == "Marian"
         assert sorted(message["author_name"] for message in messages[1:]) == [
             "Astra", "Astra", "Opus", "Opus"]
-        checkpoints = app.store.checkpoints(project, project.team_session)
-        assert sorted((checkpoints[astra.id]["delivered"],
-                       checkpoints[opus.id]["delivered"])) == [2, 3]
+        checkpoints = app.store.agent_contexts(project)
+        astra_cursor = checkpoints[astra.occupant]["delivered"][
+            project.team_session.id]
+        opus_cursor = checkpoints[opus.occupant]["delivered"][
+            project.team_session.id]
+        assert sorted((astra_cursor, opus_cursor)) == [4, 5]
     finally:
         app.stop()
+
+
+def test_one_agent_process_shares_main_and_direct_context(app):
+    project, astra, _ = furnish(app)
+    direct = project.direct_session(astra.id)
+
+    _, first_job = app.say(project.id, direct.id, "Private fact: code is 47")
+    wait(app, first_job)
+    _, second_job = app.say(project.id, project.team_session.id,
+                            "@Astra what was the private fact?")
+    wait(app, second_job)
+
+    astra_agents = [agent for agent in app._fixed_engines.history
+                    if agent.name == "Astra"]
+    assert len(astra_agents) == 1
+    assert "[Architect · private] Marian: Private fact: code is 47" in (
+        astra_agents[0].heard[0])
+    assert "@Astra what was the private fact?" in astra_agents[0].heard[1]
+
+
+def test_direct_activation_does_not_replay_main_already_in_native_context(app):
+    project, astra, _ = furnish(app)
+    _, main_job = app.say(project.id, project.team_session.id,
+                          "@Astra remember this team fact")
+    wait(app, main_job)
+
+    direct = project.direct_session(astra.id)
+    _, direct_job = app.say(project.id, direct.id, "What do you remember?")
+    wait(app, direct_job)
+
+    last_prompt = app._fixed_engines.heard_by("Astra")[-1]
+    assert "remember this team fact" not in last_prompt
+    assert "hello from Astra" not in last_prompt
+    assert "What do you remember?" in last_prompt
 
 
 def test_conversation_limits_are_configurable_for_managed_sessions(app):
@@ -231,3 +273,8 @@ def test_conversation_limits_are_configurable_for_managed_sessions(app):
     loaded = app.store.load().project(project.id).session(session.id)
     assert loaded.turn_timeout == 3600
     assert loaded.max_agent_turns == 40
+
+
+def test_non_persistent_engine_mode_is_rejected(app):
+    with pytest.raises(Exception, match="not yet implemented"):
+        app.update_engine("claude", mode="resume")

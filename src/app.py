@@ -51,6 +51,9 @@ class App:
             candidate = engine.as_dict()
             candidate.update({key: value for key, value in fields.items()
                               if key in allowed})
+            if candidate.get("mode") != "persistent":
+                raise ModelError(
+                    "non-persistent engine mode is not yet implemented")
             replacement = EngineConfig.from_dict(candidate)
             self.sinaxa.engines[self.sinaxa.engines.index(engine)] = replacement
             self.store.save_engines(self.sinaxa)
@@ -90,14 +93,22 @@ class App:
             return member
 
     def _drop_member_conversations(self, member_id):
+        for project in self.sinaxa.projects:
+            if any(seat.occupant == member_id for seat in project.seats):
+                self._reset_project_agent(project, member_id)
+
+    def _reset_project_agent(self, project, member_id):
+        if not member_id:
+            return
+        self.runtimes.reset_agent(project.id, member_id)
+        self.store.save_agent_context(project, member_id, None)
+        seat_ids = {seat.id for seat in project.seats
+                    if seat.occupant == member_id}
         for (project_id, _), talk in self._talks.items():
-            project = self.sinaxa.project(project_id)
-            for seat in project.seats:
-                if seat.occupant == member_id:
-                    conversation = talk.conversations.pop(seat.id, None)
-                    if conversation and conversation.agent:
-                        conversation.agent.stop()
-                    self.store.save_checkpoint(project, talk.session, seat.id, None)
+            if project_id != project.id:
+                continue
+            for seat_id in seat_ids:
+                talk.conversations.pop(seat_id, None)
 
     # projects ------------------------------------------------------------
     def add_project(self, name, cwd=None, type_id=None):
@@ -196,6 +207,7 @@ class App:
         with self._lock:
             project = self.sinaxa.project(project_id)
             seat = project.seat(seat_id)
+            previous_occupant = seat.occupant
             if "occupant" in fields:
                 occupant = fields["occupant"] or None
                 if occupant:
@@ -208,28 +220,28 @@ class App:
                     direct.name = seat.role
             if "prompt" in fields and fields["prompt"].strip():
                 seat.prompt = fields["prompt"]
-            self._drop_seat_conversations(project, seat.id)
+            self._drop_seat_conversations(
+                project, seat.id, {previous_occupant, seat.occupant})
             self.store.save_project(project)
             return seat
 
     def remove_seat(self, project_id, seat_id):
         with self._lock:
             project = self.sinaxa.project(project_id)
-            self._drop_seat_conversations(project, seat_id)
+            occupant = project.seat(seat_id).occupant
+            self._drop_seat_conversations(project, seat_id, {occupant})
             seat, direct = project.remove_seat(seat_id)
             if direct:
                 self.store.erase_session(project, direct)
             self.store.save_project(project)
             return seat
 
-    def _drop_seat_conversations(self, project, seat_id):
+    def _drop_seat_conversations(self, project, seat_id, member_ids=()):
+        for member_id in member_ids:
+            self._reset_project_agent(project, member_id)
         for (project_id, _), talk in self._talks.items():
-            if project_id != project.id:
-                continue
-            conversation = talk.conversations.pop(seat_id, None)
-            if conversation and conversation.agent:
-                conversation.agent.stop()
-            self.store.save_checkpoint(project, talk.session, seat_id, None)
+            if project_id == project.id:
+                talk.conversations.pop(seat_id, None)
 
     # sessions ------------------------------------------------------------
     def add_session(self, project_id, name, participants):
@@ -240,6 +252,7 @@ class App:
 
     def update_session(self, project_id, session_id, **fields):
         project, session = self.locate(project_id, session_id)
+        previous_participants = set(session.participants)
         structural = {"name", "participants", "archived"}.intersection(fields)
         if session.kind != CUSTOM and structural:
             raise ModelError("direct and team sessions are managed by the project")
@@ -268,16 +281,26 @@ class App:
             session.participants = participants
         if "archived" in fields:
             session.archived = bool(fields["archived"])
+        if previous_participants != set(session.participants):
+            affected = previous_participants | set(session.participants)
+            for member_id in {project.seat(seat_id).occupant
+                              for seat_id in affected}:
+                self._reset_project_agent(project, member_id)
         self.store.save_project(project)
         return session
 
     def remove_session(self, project_id, session_id):
         project = self.sinaxa.project(project_id)
         session = project.remove_session(session_id)
+        member_ids = {project.seat(seat_id).occupant
+                      for seat_id in session.participants}
         talk = self._talks.pop((project.id, session.id), None)
         if talk:
             talk.stop()
         self.store.erase_session(project, session)
+        self.store.forget_agent_session(project, session.id)
+        for member_id in member_ids:
+            self._reset_project_agent(project, member_id)
         self.store.save_project(project)
         return session
 
@@ -293,10 +316,14 @@ class App:
         talk = self._talks.pop((project.id, session.id), None)
         if talk:
             talk.stop()
+        member_ids = {project.seat(seat_id).occupant
+                      for seat_id in session.participants}
         self.store.clear_history(project, session)
         session.seq = 0
         session.context_start_seq = 0
         session.last_activity_at = None
+        for member_id in member_ids:
+            self._reset_project_agent(project, member_id)
         self.store.save_project(project)
 
     # talking -------------------------------------------------------------
