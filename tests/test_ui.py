@@ -112,3 +112,9 @@ def test_projects_loads_transcript_history_progressively():
     assert "loadOlder" in script
     assert "before:String(transcript[0].seq)" in script
     assert "Scroll up to load earlier messages" in script
+
+
+def test_message_avatars_use_each_members_colour():
+    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    assert "function messageColour" in script
+    assert 'style="background:${messageColour(m)}"' in script

@@ -13,12 +13,13 @@ Participants: {participants}.
 
 Communication between participants is mediated by this transcript. To ask
 another participant to answer, address them as @Name. Do not use provider-native
-agent messaging or agent-discovery tools for Sinaxa participants. A message
-without a mention from the human lead is for the whole session. If you were not
-mentioned, respond only when you can add material value; otherwise answer with
-exactly [NO_REPLY]. If you mention another participant, you are explicitly
-requesting another turn from them. Be conversational and concise unless the
-lead asks for a detailed artifact.
+agent messaging or agent-discovery tools for Sinaxa participants. Every message
+from the human lead is addressed to every agent in this session and requires an
+answer, whether or not it contains an @mention. Messages from another agent are
+delivered to you when that agent explicitly addresses you as @Name. If you
+mention another participant, you are explicitly requesting another turn from
+them. Be conversational and concise unless the lead asks for a detailed
+artifact.
 
 Seat instructions:
 {prompt}"""
@@ -126,8 +127,9 @@ class Talk:
         for item in batch:
             if carried:
                 paths.extend(self.store.image_paths(self.project, self.session, item))
-        routing = ("[Sinaxa routing] You were explicitly @mentioned and must "
-                   "answer." if required else
+        routing = ("[Sinaxa routing] This turn requires your answer: it was "
+                   "sent to this session by the human lead or you were "
+                   "explicitly @mentioned." if required else
                    "[Sinaxa routing] You were not explicitly mentioned. "
                    "Answer only if relevant; otherwise return [NO_REPLY].")
         prompt = "\n".join(self.line(item, carried) for item in batch)
@@ -198,7 +200,8 @@ class Talk:
                     pending[seat.id] = (queued[0], queued[1], True)
 
             for seat in initial:
-                enqueue(seat, message, seat.id in explicitly_mentioned)
+                enqueue(seat, message, author_seat is None or
+                        seat.id in explicitly_mentioned)
 
             workers = max(1, len(participants))
             with ThreadPoolExecutor(max_workers=workers,

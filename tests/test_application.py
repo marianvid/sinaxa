@@ -43,6 +43,8 @@ def test_message_is_accepted_then_both_team_members_answer(app):
     messages = app.state(project.id, project.team_session.id)["messages"]
     assert messages[0]["author_name"] == "Marian"
     assert {m["author_name"] for m in messages[1:]} == {"Astra", "Opus"}
+    assert all("requires your answer" in app._fixed_engines.heard_by(name)[0]
+               for name in ("Astra", "Opus"))
 
 
 def test_direct_session_only_calls_its_seat(app):
@@ -51,6 +53,7 @@ def test_direct_session_only_calls_its_seat(app):
     _, job = app.say(project.id, direct.id, "Private")
     wait(app, job)
     assert [m["author_name"] for m in app.state(project.id, direct.id)["messages"]] == ["Marian", "Astra"]
+    assert "requires your answer" in app._fixed_engines.heard_by("Astra")[0]
 
 
 def test_clear_context_keeps_history_and_adds_boundary(app):
@@ -157,7 +160,7 @@ def test_human_seat_participates_without_being_run_as_an_engine(app):
             app.state(project.id, direct.id)["messages"]] == ["Marian"]
 
 
-def test_mention_is_mandatory_while_other_agents_may_decline(tmp_path):
+def test_human_message_requires_every_session_agent_to_answer(tmp_path):
     engines = FakeEngines({"Astra": "addressed answer",
                            "Opus": "[NO_REPLY]"})
     app = App(tmp_path, cwd=str(tmp_path), engines=engines)
@@ -171,7 +174,7 @@ def test_mention_is_mandatory_while_other_agents_may_decline(tmp_path):
         assert [message["author_name"] for message in messages] == [
             "Marian", "Astra"]
         assert engines.heard_by("Opus")
-        assert "not explicitly mentioned" in engines.heard_by("Opus")[0]
+        assert "requires your answer" in engines.heard_by("Opus")[0]
         assert "provider-native" in engines.agents["Astra"].instructions
     finally:
         app.stop()
