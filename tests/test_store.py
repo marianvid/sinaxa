@@ -47,6 +47,26 @@ def test_project_agent_context_tracks_each_session_cursor(tmp_path):
     assert store.agent_contexts(project)["member"]["delivered"] == {"main": 12}
 
 
+def test_message_commit_and_read_cursor_are_one_repository_transaction(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    session = project.team_session
+
+    lead = store.commit_message(project, session, {
+        "author": "lead", "author_name": "Marian", "text": "Question"})
+    first = store.commit_message(project, session, {
+        "author": "seat_a", "author_name": "A", "text": "First"})
+    store.commit_message(project, session, {
+        "author": "seat_b", "author_name": "B", "text": "Second"})
+
+    assert (lead["seq"], first["seq"], session.seq) == (1, 2, 3)
+    assert session.unread_count == 2
+    assert store.mark_read(project, session, first["seq"]) == 2
+    assert session.unread_count == 1
+    loaded = store.load().project(project.id).team_session
+    assert loaded.read_seq == 2 and loaded.unread_count == 1
+
+
 def test_closed_context_history_can_be_deleted_one_section_at_a_time(tmp_path):
     store = Store(tmp_path)
     project = Sinaxa().add_project("P")

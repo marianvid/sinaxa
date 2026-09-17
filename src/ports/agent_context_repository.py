@@ -1,0 +1,9 @@
+from typing import Protocol
+
+
+class AgentContextRepository(Protocol):
+    """Native conversation ids and delivery cursors for persistent agents."""
+
+    def all(self, project): ...
+    def save(self, project, member_id, checkpoint): ...
+    def forget_session(self, project, session_id): ...

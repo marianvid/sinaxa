@@ -35,3 +35,22 @@ def test_domain_does_not_import_outer_layers():
                                 for alias in node.names)
         assert not (imported & forbidden), "%s imports %s" % (
             path, sorted(imported & forbidden))
+
+
+def test_persistence_and_conversation_concerns_have_dedicated_modules():
+    expected = (
+        "persistence/json_documents.py",
+        "persistence/project_repository.py",
+        "persistence/transcript_repository.py",
+        "persistence/agent_context_repository.py",
+        "persistence/attachment_store.py",
+        "conversation/prompt_builder.py",
+        "conversation/context_assembler.py",
+        "conversation/routing_policy.py",
+        "services/catalog_service.py",
+        "services/read_model.py",
+        "ports/transcript_repository.py",
+        "ports/agent_context_repository.py",
+        "ports/project_repository.py",
+    )
+    assert all((ROOT / relative).is_file() for relative in expected)

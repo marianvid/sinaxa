@@ -6,8 +6,9 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from .domain import CLOSED, CUSTOM, OPEN, EngineConfig, ModelError
-from .runtime import RuntimeManager, describe
+from .domain import CLOSED, CUSTOM, OPEN, ModelError
+from .runtime import RuntimeManager
+from .services import CatalogService, ReadModel
 from .store import Store
 from .talk import Talk
 
@@ -23,9 +24,14 @@ class App:
         self.runtimes = RuntimeManager(self.sinaxa, factory=runtime_factory)
         self._talks = {}
         self._jobs = {}
+        self._lock = threading.RLock()
+        self.catalog_service = CatalogService(
+            self.sinaxa, self.store, self.runtimes, self._lock,
+            self._engine_changed, self._drop_member_conversations)
+        self.read_model = ReadModel(
+            self.sinaxa, self.store, self.runtimes, self._talks)
         self._executor = ThreadPoolExecutor(max_workers=16,
                                             thread_name_prefix="sinaxa-turn")
-        self._lock = threading.RLock()
         self._stopped = False
         atexit.register(self.stop)
 
@@ -44,53 +50,25 @@ class App:
 
     # engines -------------------------------------------------------------
     def update_engine(self, engine_id, **fields):
-        with self._lock:
-            engine = self.sinaxa.engine(engine_id)
-            allowed = {"name", "enabled", "executable", "mode", "streaming",
-                       "max_concurrency", "mcp_servers", "options"}
-            candidate = engine.as_dict()
-            candidate.update({key: value for key, value in fields.items()
-                              if key in allowed})
-            if candidate.get("mode") != "persistent":
-                raise ModelError(
-                    "non-persistent engine mode is not yet implemented")
-            replacement = EngineConfig.from_dict(candidate)
-            self.sinaxa.engines[self.sinaxa.engines.index(engine)] = replacement
-            self.store.save_engines(self.sinaxa)
-            for project in self.sinaxa.projects:
-                self.runtimes.close(project.id)
-            self._talks.clear()
-            return replacement
+        return self.catalog_service.update_engine(engine_id, **fields)
+
+    def _engine_changed(self):
+        for project in self.sinaxa.projects:
+            self.runtimes.close(project.id)
+        self._talks.clear()
 
     def models_for(self, engine_id, project_id=None):
-        engine = self.sinaxa.engine(engine_id)
-        if project_id:
-            project = self.sinaxa.project(project_id)
-        else:
-            project = next((p for p in self.sinaxa.projects if p.is_open), None)
-        if not project:
-            return []
-        return self.runtimes.for_project(project).models_for(engine.id)
+        return self.catalog_service.models_for(engine_id, project_id)
 
     # members -------------------------------------------------------------
     def add_member(self, **fields):
-        with self._lock:
-            member = self.sinaxa.add_member(**fields)
-            self.store.save_members(self.sinaxa)
-            return member
+        return self.catalog_service.add_member(**fields)
 
     def update_member(self, member_id, **fields):
-        with self._lock:
-            member = self.sinaxa.update_member(member_id, **fields)
-            self.store.save_members(self.sinaxa)
-            self._drop_member_conversations(member_id)
-            return member
+        return self.catalog_service.update_member(member_id, **fields)
 
     def remove_member(self, member_id):
-        with self._lock:
-            member = self.sinaxa.remove_member(member_id)
-            self.store.save_members(self.sinaxa)
-            return member
+        return self.catalog_service.remove_member(member_id)
 
     def _drop_member_conversations(self, member_id):
         for project in self.sinaxa.projects:
@@ -158,41 +136,23 @@ class App:
     # seats ---------------------------------------------------------------
     # reusable seat templates --------------------------------------------
     def add_seat_template(self, **fields):
-        with self._lock:
-            template = self.sinaxa.add_seat_template(**fields)
-            self.store.save_seat_templates(self.sinaxa)
-            return template
+        return self.catalog_service.add_seat_template(**fields)
 
     def update_seat_template(self, template_id, **fields):
-        with self._lock:
-            template = self.sinaxa.update_seat_template(template_id, **fields)
-            self.store.save_seat_templates(self.sinaxa)
-            return template
+        return self.catalog_service.update_seat_template(template_id, **fields)
 
     def remove_seat_template(self, template_id):
-        with self._lock:
-            template = self.sinaxa.remove_seat_template(template_id)
-            self.store.save_seat_templates(self.sinaxa)
-            return template
+        return self.catalog_service.remove_seat_template(template_id)
 
     # project types ------------------------------------------------------
     def add_project_type(self, **fields):
-        with self._lock:
-            project_type = self.sinaxa.add_project_type(**fields)
-            self.store.save_project_types(self.sinaxa)
-            return project_type
+        return self.catalog_service.add_project_type(**fields)
 
     def update_project_type(self, type_id, **fields):
-        with self._lock:
-            project_type = self.sinaxa.update_project_type(type_id, **fields)
-            self.store.save_project_types(self.sinaxa)
-            return project_type
+        return self.catalog_service.update_project_type(type_id, **fields)
 
     def remove_project_type(self, type_id):
-        with self._lock:
-            project_type = self.sinaxa.remove_project_type(type_id)
-            self.store.save_project_types(self.sinaxa)
-            return project_type
+        return self.catalog_service.remove_project_type(type_id)
 
     # project seats ------------------------------------------------------
     def add_seat(self, project_id, template_id, occupant=None, prompt=None):
@@ -350,11 +310,7 @@ class App:
 
     def mark_read(self, project_id, session_id, seq):
         project, session = self.locate(project_id, session_id)
-        session.read_seq = max(session.read_seq,
-                               min(max(0, int(seq)), session.seq))
-        session.unread_count = 0
-        self.store.save_project(project)
-        return session.read_seq
+        return self.store.mark_read(project, session, seq)
 
     # talking -------------------------------------------------------------
     def say(self, project_id, session_id, text, images=None):
@@ -396,45 +352,8 @@ class App:
     # read model ----------------------------------------------------------
     def state(self, project_id=None, session_id=None, search=None,
               before=None, after=None, anchor=None, limit=60):
-        projects = []
-        for project in self.sinaxa.projects:
-            projects.append({"id": project.id, "name": project.name,
-                             "cwd": project.cwd, "state": project.state,
-                             "type_id": project.type_id,
-                             "storage": self.store.storage(project),
-                             "sessions": [dict(
-                                session.as_dict(),
-                                storage=self.store.storage(project, session),
-                                **self.store.session_metrics(project, session))
-                                for session in project.sessions]})
-        out = {"engines": [describe(e) for e in self.sinaxa.engines],
-               "members": [m.as_dict() for m in self.sinaxa.members],
-               "seat_templates": [t.as_dict()
-                                  for t in self.sinaxa.seat_templates],
-               "project_types": [t.as_dict()
-                                 for t in self.sinaxa.project_types],
-               "projects": projects,
-               "lead": self.sinaxa.lead.as_dict() if self.sinaxa.lead else None}
-        if not self.sinaxa.projects:
-            return out
-        project = self.sinaxa.project(project_id) if project_id else self.sinaxa.projects[0]
-        session = project.session(session_id) if session_id else project.team_session
-        page = self.store.message_page(
-            project, session, before=before, after=after, anchor=anchor,
-            limit=limit, search=search)
-        talk = self._talks.get((project.id, session.id))
-        out.update({"project": project.id, "session": session.id,
-                    "seats": [dict(seat.as_dict(),
-                       name=self.sinaxa.seat_name(project, seat),
-                       trouble=self.sinaxa.seat_trouble(project, seat))
-                       for seat in project.seats],
-                    "messages": page["messages"],
-                    "message_page": {key: value for key, value in page.items()
-                                     if key != "messages"},
-                    "status": talk.status() if talk else {
-                        "busy": [], "agents": [],
-                        "engines": self.runtimes.status(project.id)}})
-        return out
+        return self.read_model.state(
+            project_id, session_id, search, before, after, anchor, limit)
 
     def stop(self):
         if self._stopped:

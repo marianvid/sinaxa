@@ -1,6 +1,13 @@
 from pathlib import Path
 
 
+def project_scripts():
+    ui = Path(__file__).parents[1] / "ui"
+    names = ("projects-state.js", "projects-sidebar.js",
+             "projects-transcript.js", "projects-dialogs.js", "projects.js")
+    return "\n".join((ui / name).read_text() for name in names)
+
+
 def test_primary_sections_are_independent_files():
     ui = Path(__file__).parents[1] / "ui"
     for page in ("projects", "members", "seats", "types", "engines", "settings"):
@@ -85,10 +92,20 @@ def test_projects_owns_seats_sessions_search_and_attachments():
         assert marker in html
 
 
+def test_chat_page_loads_its_responsibilities_as_separate_scripts():
+    ui = Path(__file__).parents[1] / "ui"
+    html = (ui / "projects.html").read_text()
+    server = (ui.parent / "src" / "server.py").read_text()
+    for name in ("projects-state", "projects-sidebar",
+                 "projects-transcript", "projects-dialogs"):
+        assert f'<script src="/{name}.js"></script>' in html
+        assert name in server
+
+
 def test_projects_exposes_non_destructive_clear_context_action():
     ui = Path(__file__).parents[1] / "ui"
     html = (ui / "projects.html").read_text()
-    script = (ui / "projects.js").read_text()
+    script = project_scripts()
     assert 'id="clearContext"' in html
     assert 'id="clearSession"' not in html
     assert 'id="sessionMenu"' in html
@@ -101,7 +118,7 @@ def test_projects_exposes_non_destructive_clear_context_action():
 
 
 def test_projects_tracks_unread_sessions_until_the_visible_end_is_read():
-    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    script = project_scripts()
     assert "attention-dot" in script
     assert "openingUnread" in script
     assert "scrollAnchor" in script
@@ -115,7 +132,7 @@ def test_projects_tracks_unread_sessions_until_the_visible_end_is_read():
 def test_projects_exposes_hierarchical_project_navigation_and_overview():
     ui = Path(__file__).parents[1] / "ui"
     html = (ui / "projects.html").read_text()
-    script = (ui / "projects.js").read_text()
+    script = project_scripts()
     assert 'id="projectOverview"' in html
     assert 'id="openMain"' in html
     assert "Direct sessions" not in script
@@ -125,14 +142,14 @@ def test_projects_exposes_hierarchical_project_navigation_and_overview():
 
 
 def test_projects_loads_transcript_history_progressively():
-    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    script = project_scripts()
     assert "loadOlder" in script
     assert "before:String(transcript[0].seq)" in script
     assert "Scroll up to load earlier messages" in script
 
 
 def test_message_avatars_use_each_members_colour():
-    script = (Path(__file__).parents[1] / "ui" / "projects.js").read_text()
+    script = project_scripts()
     assert "function messageColour" in script
     assert 'style="background:${messageColour(m)}"' in script
 

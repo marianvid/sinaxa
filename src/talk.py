@@ -1,39 +1,11 @@
 """Conversation orchestration for one project session."""
 
 import threading
-import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-from .conversation import Conversation
+from .conversation import (ContextAssembler, Conversation, PromptBuilder,
+                           RoutingPolicy)
 from .domain import ModelError
-
-PREAMBLE = """You are {name}, a persistent member of project {project}.
-The human lead is {lead}. Your project roles and instructions are:
-{roles}
-
-Project members: {participants}.
-
-Communication between participants is mediated by this transcript. To ask
-another participant to answer, address them as @Name. Do not use provider-native
-agent messaging or agent-discovery tools for Sinaxa participants. Messages are
-labelled with their Sinaxa channel. Main-channel messages are visible to every
-project member; direct-channel messages are private to you and the human lead;
-group-channel messages are visible only to that group's participants. Private
-and shared information together form your project knowledge. Use all available
-project knowledge when reasoning, making decisions and completing tasks,
-regardless of which channel supplied it. Channel visibility controls disclosure,
-not whether knowledge may be used. Do not unnecessarily quote or expose private
-transcript content in another channel. You may disclose relevant private
-information when it is necessary to complete the human lead's current request,
-or when the lead explicitly asks you to recall, quote, summarize or use it.
-Either case is sufficient authorization; comply without asking for another
-confirmation. A message addressed to somebody else is context only and never
-invites your response. The final Sinaxa routing note is authoritative: answer
-only when it requires your visible answer, otherwise return exactly [NO_REPLY].
-Channel labels such as [Main · team] are metadata; never repeat them in your
-answer. If you mention another participant, you explicitly request another turn
-from them. Be conversational and concise unless the lead asks for a detailed
-artifact."""
 
 
 class Talk:
@@ -43,6 +15,9 @@ class Talk:
         self.project = project
         self.session = session
         self.engines = engines
+        self.prompts = PromptBuilder(sinaxa, project)
+        self.contexts = ContextAssembler(sinaxa, store, project, session)
+        self.routing = RoutingPolicy(sinaxa, project, session)
         self.conversations = {}
         self.busy = set()
         self._lock = threading.RLock()
@@ -54,22 +29,10 @@ class Talk:
             return self.conversations.setdefault(seat.id, Conversation(seat.id))
 
     def participants(self):
-        return [self.project.seat(seat_id)
-                for seat_id in self.session.participants]
+        return self.routing.participants()
 
     def instructions_for(self, seat):
-        lead = self.sinaxa.lead
-        member = self.sinaxa.member(seat.occupant)
-        member_seats = [one for one in self.project.seats
-                        if one.occupant == member.id]
-        return PREAMBLE.format(
-            name=member.name, project=self.project.name,
-            lead=lead.name if lead else "the human lead",
-            participants=", ".join(
-                "%s (%s)" % (self.sinaxa.seat_name(self.project, one), one.role)
-                for one in self.project.seats),
-            roles="\n".join("- %s: %s" % (one.role, one.prompt)
-                            for one in member_seats))
+        return self.prompts.instructions_for(seat)
 
     def start(self, seat):
         conversation = self.conversation(seat)
@@ -126,49 +89,10 @@ class Talk:
             return boundary
 
     def line(self, message, carried=True):
-        count = len(message.get("images", []))
-        note = ""
-        if count:
-            note = " [%d image%s %s]" % (
-                count, "" if count == 1 else "s",
-                "attached" if carried else "not supported by this engine")
-        session_name = message.get("_session_name", self.session.name)
-        visibility = message.get("_visibility", "session")
-        return "[%s · %s] %s: %s%s" % (session_name, visibility,
-                                   message.get("author_name", "?"),
-                                   message.get("text", ""), note)
+        return self.contexts.line(message, carried)
 
     def context_for(self, seat, through):
-        member = self.sinaxa.member(seat.occupant)
-        member_seats = {one.id for one in self.project.seats
-                        if one.occupant == member.id}
-        checkpoint = self.store.agent_contexts(self.project).get(member.id, {})
-        delivered = checkpoint.get("delivered") or {}
-        batch = []
-        for session in self.project.sessions:
-            if not member_seats.intersection(session.participants):
-                continue
-            cursor = int(delivered.get(session.id, 0))
-            for stored in self.store.messages(self.project, session):
-                seq = stored.get("seq", 0)
-                if seq <= cursor or seq < session.context_start_seq:
-                    continue
-                if stored.get("kind") in ("boundary", "compaction"):
-                    continue
-                if session.id == self.session.id and seq > through["seq"]:
-                    continue
-                if stored.get("ts", 0) > through.get("ts", float("inf")):
-                    continue
-                message = dict(stored)
-                message["_session_id"] = session.id
-                message["_session_name"] = (
-                    "Main" if session.kind == "team" else session.name)
-                message["_visibility"] = (
-                    "private" if session.kind == "direct" else
-                    "team" if session.kind == "team" else "group")
-                batch.append(message)
-        return sorted(batch, key=lambda item: (
-            item.get("ts", 0), item["_session_id"], item.get("seq", 0)))
+        return self.contexts.context_for(seat, through)
 
     def deliver(self, seat, message, required=False):
         agent = self.start(seat)
@@ -180,17 +104,8 @@ class Talk:
         with lock:
             batch = self.context_for(seat, message)
             carried = bool(getattr(agent, "accepts_images", False))
-            paths = []
-            for item in batch:
-                if carried:
-                    source = self.project.session(item["_session_id"])
-                    paths.extend(self.store.image_paths(
-                        self.project, source, item))
-            routing = ("[Sinaxa routing] Reply in channel %s. This turn "
-                       "requires your visible answer." % self.session.name
-                       if required else
-                       "[Sinaxa routing] Update your awareness, but do not "
-                       "produce a visible reply; return exactly [NO_REPLY].")
+            paths = self.contexts.image_paths(batch, carried)
+            routing = self.routing.note(required)
             prompt = "\n".join(self.line(item, carried) for item in batch)
             prompt = "%s\n\n%s" % (prompt, routing)
             answer, meta = agent.ask(
@@ -226,41 +141,28 @@ class Talk:
         self.conversation(seat).delivered = delivered[self.session.id]
 
     def speakers_for(self, text, author_seat=None):
-        seats = [seat for seat in self.participants()
-                 if seat.id != author_seat
-                 and self.sinaxa.seat_runs_engine(seat)]
-        mentioned = self.sinaxa.mentioned(self.project, text, seats)
-        if author_seat is None:
-            return mentioned or seats
-        return mentioned
+        return self.routing.speakers_for(text, author_seat)
 
     def post(self, text, author="lead", author_name=None, kind=None,
              images=None, meta=None):
         with self._post_lock:
-            self.session.seq += 1
-            now = time.time()
-            self.session.last_activity_at = now
-            message = {"seq": self.session.seq, "author": author,
+            message = {"author": author,
                        "author_name": author_name or (
                            self.sinaxa.lead.name if self.sinaxa.lead else "You"),
-                       "text": text, "ts": now}
+                       "text": text}
             if kind:
                 message["kind"] = kind
             if images:
                 message["images"] = list(images)
             if meta:
                 message["meta"] = meta
-            self.store.append(self.project, self.session, message)
-            if author not in ("lead", "system"):
-                self.session.unread_count += 1
-            self.store.save_project(self.project)
-            return message
+            return self.store.commit_message(
+                self.project, self.session, message)
 
     def run_turn(self, message, author_seat=None, hops=None, targets=None):
         del hops  # retained for callers from the pre-round scheduler API
         with self._round_lock:
-            participants = [seat for seat in self.participants()
-                            if self.sinaxa.seat_runs_engine(seat)]
+            participants = self.routing.runnable_participants()
             initial = targets if targets is not None else self.speakers_for(
                 message["text"], author_seat)
             explicitly_mentioned = {seat.id for seat in self.sinaxa.mentioned(

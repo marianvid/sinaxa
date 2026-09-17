@@ -12,10 +12,13 @@ UI pages -> HTTP adapter -> App composition root
 
 `domain/` contains invariants and no I/O. Each entity or aggregate has its own
 module. `model.py` is only a compatibility facade for older imports.
-`store.py` owns atomic JSON,
-append-only JSONL, attachments, storage accounting and destructive operations
-scoped to its state root. `talk.py` owns visibility projection, mentions and
-turn propagation, including concurrent fan-out and per-agent pending mailboxes.
+`store.py` is a compatibility facade and transaction boundary. Concrete
+filesystem concerns live in `persistence/`: atomic JSON documents, project
+metadata, append-only transcripts, attachments and native agent checkpoints
+each have a separate adapter. `talk.py` coordinates one conversation;
+`conversation/` owns prompt construction, visibility projection and routing
+policy. Turn propagation still lives in `Talk`, including concurrent fan-out
+and per-agent pending mailboxes.
 `runtime/` owns project isolation and concurrency policy. `engines/` contains
 only provider-specific process/protocol adapters; every Backend, Agent and
 native Session is isolated in its own module. `ports/` documents the structural
@@ -34,7 +37,9 @@ implementations, and `App` remains the composition root. Persistence formats
 and HTTP payloads are kept outside the domain so they can survive that rewrite.
 
 The web UI is physically split into Chats, Agents, Seat Templates, Project
-Types, Engines and Settings; each page owns its HTML, CSS and JavaScript.
+Types, Engines and Settings; each page owns its HTML, CSS and JavaScript. The
+larger Chats page is further divided into state/API, sidebar, transcript,
+dialogs and bootstrap/composer scripts.
 Project selection renders the managed Team session. Clicking one of its
 members opens the managed direct session for that seat; the human lead's direct
 session acts as personal notes. User-created sessions remain explicit groups.
@@ -85,3 +90,17 @@ state/
 JSON writes use a temporary sibling, `fsync`, then atomic replacement. Deleting
 a session/project touches only generated IDs below this root. Sinaxa never
 deletes a provider's global history.
+
+## Storage evolution
+
+The current adapter deliberately preserves the inspectable JSON/JSONL layout.
+Application and conversation code use the `Store` facade rather than opening
+these files, so a SQLite-backed implementation can replace the filesystem
+repositories without changing domain objects, routing or HTTP endpoints.
+
+SQLite is the intended next storage step once transcript volume justifies a
+migration. Projects, sessions, messages, read receipts, context boundaries and
+agent delivery cursors belong in relational tables with indexed sequence and
+timestamp columns. Attachments should remain content-addressed files referenced
+by rows. The migration must be versioned, resumable and retain JSONL export; it
+should be implemented separately from this structural refactor.

@@ -21,6 +21,10 @@ STATIC = {"/%s.%s" % (page, ext): ("%s.%s" % (page, ext),
           for page in PAGES for ext in ("html", "css", "js")}
 STATIC["/base.css"] = ("base.css", "text/css; charset=utf-8")
 STATIC["/base.js"] = ("base.js", "text/javascript; charset=utf-8")
+for name in ("projects-state", "projects-sidebar", "projects-transcript",
+             "projects-dialogs"):
+    STATIC["/%s.js" % name] = ("%s.js" % name,
+                                "text/javascript; charset=utf-8")
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
         ".gif": "image/gif", ".webp": "image/webp"}
 SUFFIX = {value: key for key, value in MIME.items()}
