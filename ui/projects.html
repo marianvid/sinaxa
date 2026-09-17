@@ -30,7 +30,6 @@
     <div hidden aria-hidden="true">
       <div class="title"><span class="proj" id="projectTitle">Projects</span><span class="dot">/</span><span class="sess" id="sessionTitle">Select a project</span><span class="sub" id="projectState"></span></div>
       <div class="seatbar" id="participants"></div>
-      <button class="chip icon" id="sessionMenu" aria-label="Session options">•••</button>
       <button id="newSessionSmall" type="button">New session</button>
     </div>
     <section id="projectOverview" class="project-overview" hidden>
@@ -46,7 +45,7 @@
       <section class="overview-section custom-sessions"><div class="overview-section-title"><div><h2>Custom sessions</h2><p>Focused conversations with a selected group of seats.</p></div></div><div id="sessions" class="overview-sessions"></div></section>
     </section>
     <section id="conversationView" class="conversation-view" hidden>
-      <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"><span class="search-divider" aria-hidden="true"></span><button id="clearContext" class="search-action" type="button" title="Start with a fresh context while keeping the visible history" aria-label="Clear context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg><span>Clear context</span></button></div>
+      <div class="searchbar"><span>⌕</span><input id="search" placeholder="Search this session"><span class="search-divider" aria-hidden="true"></span><button id="clearContext" class="search-action" type="button" title="Start with a fresh context while keeping the visible history" aria-label="Clear context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg><span>Clear context</span></button><button id="sessionMenu" class="search-action session-options" type="button" title="Manage session" aria-label="Manage session"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg></button></div>
       <div id="messages" class="thread"></div>
       <div id="composer" class="composer"><div class="cbox">
         <div id="attachments" class="pasted"></div>

@@ -51,6 +51,11 @@ boundary, resets affected native project-member contexts and appends a visible
 boundary event. Detectable native CLI compactions are also appended as
 transcript events but do not change Sinaxa's session boundary.
 
+Closed transcript epochs may later be deleted individually from their boundary
+or together from session management. Rewrites are atomic, sequence identifiers
+remain stable, and attachment cleanup removes only files no longer referenced
+by a retained message. The active epoch is never included in this cleanup.
+
 The browser initially requests the latest transcript window and requests older
 pages when the user scrolls to the top. Search is applied before paging. This
 keeps long conversations usable without changing their durable history.

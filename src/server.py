@@ -156,8 +156,9 @@ class Handler(BaseHTTPRequestHandler):
                 message = self.app.clear_context(project, parts[2])
                 return {"ok": True, "message": message}
             if parts[3] == "history":
-                self.app.clear_history(project, parts[2])
-                return {"ok": True}
+                result = self.app.clear_context_history(
+                    project, parts[2], body.get("boundary_seq"))
+                return {"ok": True, **result}
         raise KeyError("no such endpoint")
 
     def patch(self, parts, body):

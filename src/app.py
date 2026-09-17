@@ -326,6 +326,19 @@ class App:
             self._reset_project_agent(project, member_id)
         self.store.save_project(project)
 
+    def clear_context_history(self, project_id, session_id,
+                              boundary_seq=None):
+        """Remove closed transcript epochs without touching active context."""
+        project, session = self.locate(project_id, session_id)
+        if any(job["project"] == project.id and job["session"] == session.id
+               and not job["future"].done() for job in self._jobs.values()):
+            raise ModelError("wait for the current agent round to finish")
+        try:
+            return self.store.clear_context_history(
+                project, session, boundary_seq=boundary_seq)
+        except ValueError as exc:
+            raise ModelError(str(exc)) from exc
+
     # talking -------------------------------------------------------------
     def say(self, project_id, session_id, text, images=None):
         project, session = self.locate(project_id, session_id)

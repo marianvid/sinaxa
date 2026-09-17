@@ -67,6 +67,28 @@ def test_clear_context_keeps_history_and_adds_boundary(app):
     assert any(m["text"] == "Before" for m in messages)
     boundary = next(m for m in messages if m.get("kind") == "boundary")
     assert "remain in the transcript" in boundary["text"]
+    assert boundary["meta"]["boundary"] == "context_clear"
+
+
+def test_clear_closed_history_keeps_the_active_context(app):
+    project, _, _ = furnish(app)
+    session = project.team_session
+    _, old_job = app.say(project.id, session.id, "Old context")
+    wait(app, old_job)
+    app.clear_context(project.id, session.id)
+    _, active_job = app.say(project.id, session.id, "Active context")
+    wait(app, active_job)
+    active_start = session.context_start_seq
+    last_seq = session.seq
+
+    result = app.clear_context_history(project.id, session.id)
+
+    messages = app.store.messages(project, session)
+    assert result["removed"] > 0
+    assert all(message["seq"] >= active_start for message in messages)
+    assert any(message["text"] == "Active context" for message in messages)
+    assert session.context_start_seq == active_start
+    assert session.seq == last_seq
 
 
 def test_native_compaction_is_visible_but_does_not_clear_team_context(tmp_path):
@@ -181,6 +203,10 @@ def test_human_mentions_limit_replies_and_preserve_later_awareness(tmp_path):
         assert "@Astra answer this" in engines.heard_by("Opus")[0]
         assert "addressed answer" in engines.heard_by("Opus")[0]
         assert "provider-native" in engines.agents["Astra"].instructions
+        assert "context only and never invites your response" in (
+            engines.agents["Astra"].instructions)
+        assert "sufficient authorization" in engines.agents["Astra"].instructions
+        assert "never repeat them" in engines.agents["Astra"].instructions
     finally:
         app.stop()
 

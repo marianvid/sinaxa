@@ -91,8 +91,12 @@ def test_projects_exposes_non_destructive_clear_context_action():
     script = (ui / "projects.js").read_text()
     assert 'id="clearContext"' in html
     assert 'id="clearSession"' not in html
+    assert 'id="sessionMenu"' in html
+    assert 'title="Manage session"' in html
     assert "/context" in script
-    assert "/history" not in script
+    assert "/history" in script
+    assert "Delete preceding history" in script
+    assert "Delete all history from contexts already cleared" in script
 
 
 def test_projects_exposes_hierarchical_project_navigation_and_overview():

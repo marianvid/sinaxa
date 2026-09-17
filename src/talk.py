@@ -19,11 +19,16 @@ agent messaging or agent-discovery tools for Sinaxa participants. Messages are
 labelled with their Sinaxa channel. Main-channel messages are visible to every
 project member; direct-channel messages are private to you and the human lead;
 group-channel messages are visible only to that group's participants. Private
-information may inform your reasoning, but do not reveal it in another channel
-unless the human lead explicitly asks you to do so. A routing note at the end
-of each delivery says whether a visible reply is required. If you mention
-another participant, you explicitly request another turn from them. Be
-conversational and concise unless the lead asks for a detailed artifact."""
+information may inform your reasoning. Do not volunteer it in another channel,
+but when the human lead explicitly asks you to recall, quote, summarize or use
+it there, that request is sufficient authorization: comply directly without
+asking for another confirmation. A message addressed to somebody else is
+context only and never invites your response. The final Sinaxa routing note is
+authoritative: answer only when it requires your visible answer, otherwise
+return exactly [NO_REPLY]. Channel labels such as [Main · team] are metadata;
+never repeat them in your answer. If you mention another participant, you
+explicitly request another turn from them. Be conversational and concise unless
+the lead asks for a detailed artifact."""
 
 
 class Talk:
@@ -109,7 +114,8 @@ class Talk:
             return self.post(
                 "Context cleared — earlier messages remain in the transcript "
                 "but are no longer sent to agents.",
-                author="system", kind="boundary")
+                author="system", kind="boundary",
+                meta={"boundary": "context_clear"})
 
     def line(self, message, carried=True):
         count = len(message.get("images", []))

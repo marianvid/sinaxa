@@ -47,6 +47,53 @@ def test_project_agent_context_tracks_each_session_cursor(tmp_path):
     assert store.agent_contexts(project)["member"]["delivered"] == {"main": 12}
 
 
+def test_closed_context_history_can_be_deleted_one_section_at_a_time(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    session = project.team_session
+    messages = [
+        {"seq": 1, "text": "old one"},
+        {"seq": 2, "text": "old two"},
+        {"seq": 3, "kind": "boundary", "text": "Context cleared — old",
+         "meta": {"boundary": "context_clear"}},
+        {"seq": 4, "text": "middle"},
+        {"seq": 5, "kind": "boundary", "text": "Context cleared — middle",
+         "meta": {"boundary": "context_clear"}},
+        {"seq": 6, "text": "active"},
+    ]
+    for message in messages:
+        store.append(project, session, message)
+
+    result = store.clear_context_history(project, session, boundary_seq=5)
+    assert result["removed"] == 2
+    assert [m["seq"] for m in store.messages(project, session)] == [1, 2, 3, 6]
+
+    result = store.clear_context_history(project, session)
+    assert result["removed"] == 3
+    assert [m["seq"] for m in store.messages(project, session)] == [6]
+
+
+def test_history_cleanup_removes_only_orphaned_attachments(tmp_path):
+    store = Store(tmp_path)
+    project = Sinaxa().add_project("P")
+    session = project.team_session
+    old = store.save_image(project, session, b"old", ".png")
+    shared = store.save_image(project, session, b"shared", ".png")
+    store.append(project, session, {"seq": 1, "text": "old",
+                                        "images": [old, shared]})
+    store.append(project, session, {"seq": 2, "kind": "boundary",
+                                        "text": "Context cleared",
+                                        "meta": {"boundary": "context_clear"}})
+    store.append(project, session, {"seq": 3, "text": "active",
+                                        "images": [shared]})
+
+    result = store.clear_context_history(project, session)
+
+    assert result["attachments"] == 1
+    assert store.image_path(project, session, old) is None
+    assert store.image_path(project, session, shared)
+
+
 def test_transcript_pages_return_recent_messages_then_older_windows(tmp_path):
     store = Store(tmp_path)
     state = Sinaxa(engines=[EngineConfig("claude", "claude")])

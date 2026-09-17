@@ -294,6 +294,69 @@ class Store:
                 shutil.rmtree(files)
             self.clear_checkpoints(project, session)
 
+    @staticmethod
+    def is_context_boundary(message):
+        return (message.get("kind") == "boundary" and (
+            (message.get("meta") or {}).get("boundary") == "context_clear"
+            or message.get("text", "").startswith("Context cleared")))
+
+    def clear_context_history(self, project, session, boundary_seq=None):
+        """Delete one closed context section, or every closed section.
+
+        A boundary closes the messages immediately before it. Sequence numbers
+        remain stable so agent inbox cursors and progressive paging stay valid.
+        """
+        with self._lock:
+            messages = self.messages(project, session)
+            boundaries = [message.get("seq", 0) for message in messages
+                          if self.is_context_boundary(message)]
+            if not boundaries:
+                return {"removed": 0, "attachments": 0}
+            if boundary_seq is None:
+                lower, upper = 0, max(boundaries)
+            else:
+                upper = int(boundary_seq)
+                if upper not in boundaries:
+                    raise ValueError("no such cleared context section")
+                earlier = [seq for seq in boundaries if seq < upper]
+                lower = max(earlier) if earlier else 0
+            removed = [message for message in messages
+                       if lower < message.get("seq", 0) <= upper]
+            kept = [message for message in messages
+                    if not lower < message.get("seq", 0) <= upper]
+            self._replace_messages(project, session, kept)
+            attachments = self._remove_orphan_images(project, session, kept)
+            return {"removed": len(removed), "attachments": attachments}
+
+    def _replace_messages(self, project, session, messages):
+        path = self.transcript_path(project, session)
+        folder = os.path.dirname(path)
+        os.makedirs(folder, exist_ok=True)
+        handle, temporary = tempfile.mkstemp(prefix=".sinaxa-", dir=folder)
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                for message in messages:
+                    stream.write(json.dumps(message, ensure_ascii=False) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def _remove_orphan_images(self, project, session, messages):
+        folder = self.images_dir(project, session)
+        if not os.path.isdir(folder):
+            return 0
+        retained = {name for message in messages
+                    for name in message.get("images", [])}
+        removed = 0
+        for name in os.listdir(folder):
+            if name not in retained and IMAGE_NAME.match(name):
+                os.unlink(os.path.join(folder, name))
+                removed += 1
+        return removed
+
     def checkpoints(self, project, session):
         relative = os.path.relpath(os.path.join(
             self.session_dir(project, session), "conversations.json"), self.root)

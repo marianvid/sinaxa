@@ -25,7 +25,9 @@ participant is removed, because old messages carry their author identity.
 Clear context is not clear history. It appends a visible boundary and resets
 the affected persistent project agents. On their next activation, Sinaxa
 rebuilds them from still-visible transcript events while excluding the cleared
-session's earlier epoch.
+session's earlier epoch. Each boundary also closes a deletable history section:
+the user may permanently remove just that section or every closed section in
+the session while retaining the current active context.
 
 An unaddressed human message fans out concurrently to every runnable seat in
 that session. A human message containing `@Name` activates only the mentioned
